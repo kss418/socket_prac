@@ -34,20 +34,5 @@ public:
     explicit operator bool() const noexcept;
 };
 
-[[nodiscard]] std::expected <addr, int> get_addr_server(
-    std::string_view port, addr::option opt = {}
-){
-    addr ret;
-    int ec = ret.resolve_server(port, opt);
-    if(ec) return std::unexpected(ec);
-    return ret;
-};
-
-[[nodiscard]] std::expected <addr, int> get_addr_client(
-    std::string_view host, std::string_view port, addr::option opt = {}
-){
-    addr ret;
-    int ec = ret.resolve_client(host, port, opt);
-    if(ec) return std::unexpected(ec);
-    return ret;
-};
+[[nodiscard]] std::expected <addr, int> get_addr_server(std::string_view port, addr::option opt = {});
+[[nodiscard]] std::expected <addr, int> get_addr_client(std::string_view host, std::string_view port, addr::option opt = {});
