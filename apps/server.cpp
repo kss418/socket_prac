@@ -1,5 +1,4 @@
 #include <iostream>
-#include <array>
 #include <cstring>
 #include "../include/unique_fd.hpp"
 #include "../include/addr.hpp"
