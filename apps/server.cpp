@@ -11,54 +11,39 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include "../include/unique_fd.hpp"
 
 constexpr int BUF_SIZE = 4096;
 
-struct unique_fd{
-private:
-    int fd = -1;
-public:
-    unique_fd() = default;
-    explicit unique_fd(int fd) : fd(fd){}
-    
-    // delete copy constructor
-    unique_fd(const unique_fd&) = delete;
-    unique_fd& operator=(const unique_fd&) = delete;
-
-    // move constructor
-    unique_fd(unique_fd&& other) : fd(other.fd){ other.fd = -1; }
-    unique_fd& operator=(unique_fd&& other){
-        if(this != &other){
-            reset();
-            fd = other.fd;
-            other.fd = -1;
-        }
-        return *this;
-    }
-
-    ~unique_fd() noexcept{ reset(); }
-    void reset(int new_fd = -1) noexcept{
-        if(fd != -1) ::close(fd);
-        fd = new_fd;
-    }
-
-    int get() const{ return fd; }
-    explicit operator bool() const{ return fd != -1; }
-};
-
 struct addr{
+public:
+    struct option{
+        int family = AF_UNSPEC; // IPv4, IPv6
+        int socktype = SOCK_STREAM; // TCP
+        int protocol = 0;
+        int flags = 0;
+    };
 private:
     struct deleter{
         void operator()(addrinfo* p) const noexcept { if(p) ::freeaddrinfo(p); }
     };
     std::unique_ptr<addrinfo, deleter> res{nullptr};
-    addrinfo hints{};
-public:
-    addr(){
-        hints.ai_family = AF_INET; // IPv4
-        hints.ai_socktype = SOCK_STREAM; // TCP
-        hints.ai_flags = AI_PASSIVE; // server
+
+    [[nodiscard]] int resolve(const char* host, const char* port, option opt) noexcept{
+        res.reset();
+        addrinfo hints{};
+        hints.ai_family = opt.family;
+        hints.ai_socktype = opt.socktype;
+        hints.ai_protocol = opt.protocol;
+        hints.ai_flags = opt.flags;
+
+        addrinfo* raw = nullptr;
+        int ec = ::getaddrinfo(host, port, &hints, &raw);
+        if(ec == 0) res.reset(raw);
+        return ec;
     }
+public:
+    addr() = default;
     
     // delete copy constructor
     addr(const addr&) = delete;
@@ -67,18 +52,35 @@ public:
     // default move constructor
     addr(addr&&) noexcept = default;
     addr& operator=(addr&&) noexcept = default;
-    
-    [[nodiscard]] int try_get_addr(std::string_view port){
-        res.reset();
-        addrinfo* raw = nullptr;
-        std::string service(port); 
-        int ec = ::getaddrinfo(nullptr, service.c_str(), &hints, &raw);
-        if(!ec) res.reset(raw);
-        return ec;
+
+    int resolve_client(std::string_view host, std::string_view port, option opt = {}) noexcept{
+        std::string host_str = std::string(host);
+        std::string port_str = std::string(port);
+        return resolve(host.empty() ? nullptr : host_str.c_str(), port_str.c_str(), opt);
+    }
+
+    int resolve_server(std::string_view port, option opt = {}) noexcept{
+        std::string port_str = std::string(port);
+        opt.flags |= AI_PASSIVE;
+        return resolve(nullptr, port_str.c_str(), opt);
     }
 
     addrinfo* get() const{ return res.get(); }
     explicit operator bool() const { return res != nullptr; }
+};
+
+std::expected <addr, int> get_addr_server(std::string_view port, addr::option opt = {}){
+    addr ret;
+    int ec = ret.resolve_server(port, opt);
+    if(ec) return std::unexpected(ec);
+    return ret;
+};
+
+std::expected <addr, int> get_addr_client(std::string_view host, std::string_view port, addr::option opt = {}){
+    addr ret;
+    int ec = ret.resolve_client(host, port, opt);
+    if(ec) return std::unexpected(ec);
+    return ret;
 };
 
 std::expected<unique_fd, int> make_listen_fd(addrinfo* head){
@@ -105,13 +107,6 @@ std::expected<unique_fd, int> make_listen_fd(addrinfo* head){
     if(ec == 0) ec = EINVAL;
     return std::unexpected(ec);
 }
-
-std::expected <addr, int> get_addr(std::string_view port){
-    addr ret;
-    int ec = ret.try_get_addr(port);
-    if(ec) return std::unexpected(ec);
-    return ret;
-};
 
 std::expected <unique_fd, int> make_client_fd(int listen_fd){
     while(true){
