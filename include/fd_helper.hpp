@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 #include <expected>
 #include <unistd.h>
 #include <sys/socket.h>

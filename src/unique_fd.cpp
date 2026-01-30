@@ -6,7 +6,7 @@ unique_fd::unique_fd(unique_fd&& other) noexcept{
     other.fd = -1;
 }
 
-unique_fd& unique_fd::operator=(unique_fd&& other){
+unique_fd& unique_fd::operator=(unique_fd&& other) noexcept{
     if(this != &other){
         reset();
         fd = other.fd;
@@ -22,6 +22,6 @@ void unique_fd::reset(int new_fd = -1) noexcept{
     fd = new_fd;
 }
 
-int unique_fd::get() const{ return fd; }
-explicit unique_fd::operator bool() const{ return fd != -1; }
-explicit unique_fd::unique_fd(int fd) : fd(fd){}
+int unique_fd::get() const noexcept{ return fd; }
+unique_fd::operator bool() const noexcept{ return fd != -1; }
+unique_fd::unique_fd(int fd) noexcept : fd(fd){}

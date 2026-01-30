@@ -7,7 +7,7 @@ std::expected <void, int> echo_session(int client_fd){
         if(recv_byte == 0) return {};
         if(recv_byte == -1){
             int ec = errno;
-            if(errno == EINTR) continue;
+            if(ec == EINTR) continue;
             return std::unexpected(ec);
         }
 

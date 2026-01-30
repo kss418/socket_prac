@@ -14,7 +14,7 @@ public:
     unique_fd& operator=(unique_fd&& other) noexcept;
 
     ~unique_fd() noexcept;
-    void reset(int) noexcept;
+    void reset(int new_fd = -1) noexcept;
     int get() const noexcept;
     explicit operator bool() const noexcept;
 };
