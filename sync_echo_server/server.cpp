@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
+constexpr int BUF_SIZE = 4096;
+
 struct unique_fd{
 private:
     int fd = -1;
@@ -123,7 +125,7 @@ std::expected <unique_fd, int> make_client_fd(int listen_fd){
 }
 
 std::expected <void, int> echo_session(int client_fd){
-    std::array <char, 4096> buf{};
+    std::array <char, BUF_SIZE> buf{};
     while(true){
         ssize_t recv_byte = ::recv(client_fd, buf.data(), buf.size(), 0);
         if(recv_byte == 0) return {};
