@@ -1,7 +1,6 @@
 #pragma once
 #include <netdb.h>
 #include <memory>
-#include <expected>
 #include <string_view>
 #include "../include/error_code.hpp"
 

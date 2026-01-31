@@ -1,5 +1,4 @@
 #pragma once
-#include <expected>
 #include <array>
 #include <cerrno>
 #include <sys/socket.h>

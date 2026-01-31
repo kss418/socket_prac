@@ -2,6 +2,7 @@
 #include <string>
 #include <cstring>
 #include <netdb.h>
+#include <expected>
 
 enum class error_domain { errno_domain, gai_domain };
 struct error_code{
