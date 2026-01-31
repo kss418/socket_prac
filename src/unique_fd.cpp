@@ -17,7 +17,7 @@ unique_fd& unique_fd::operator=(unique_fd&& other) noexcept{
 
 unique_fd::~unique_fd() noexcept{ reset(); }
 
-void unique_fd::reset(int new_fd = -1) noexcept{
+void unique_fd::reset(int new_fd) noexcept{
     if(fd != -1) ::close(fd);
     fd = new_fd;
 }
