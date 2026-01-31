@@ -58,6 +58,7 @@ std::expected <recv_info, error_code> drain_recv(int fd, std::string& buf){
         if(now > 0){
             buf.append(tmp.data(), static_cast<std::size_t>(now));
             ret.byte += static_cast<std::size_t>(now);
+            if(buf.find('\n') != std::string::npos) return ret;
             continue;
         }
 

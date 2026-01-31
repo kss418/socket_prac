@@ -16,6 +16,7 @@ std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
 
     std::cout << ep_str << " is connected\n";
     while(true){
+        buf.clear();
         auto recv_ret_exp = drain_recv(client_fd, buf);
         if(!recv_ret_exp) return std::unexpected(recv_ret_exp.error());
         auto recv_ret = std::move(*recv_ret_exp);
@@ -26,7 +27,6 @@ std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
         }
 
         si.append(buf.data(), static_cast<std::size_t>(recv_ret.byte));
-        si.append("\n");
         auto flush_send_exp = flush_send(client_fd, si);
         if(!flush_send_exp) return std::unexpected(flush_send_exp.error());
 
