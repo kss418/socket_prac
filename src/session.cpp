@@ -30,10 +30,7 @@ std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
 
         si.append(buf.data(), static_cast<std::size_t>(recv_byte));
         auto flush_send_exp = flush_send(client_fd, si);
-        if(!flush_send_exp){
-            std::cerr << ep_str << " send failed" << to_string(flush_send_exp.error()) << "\n";
-            continue;
-        }
+        if(!flush_send_exp) return std::unexpected(flush_send_exp.error());
 
         size_t send_byte = *flush_send_exp;
         std::cout << ep_str << " sends " << send_byte << " byte" << (send_byte == 1 ? "\n" : "s\n");

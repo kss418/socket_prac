@@ -35,8 +35,10 @@ int main(){
         auto session_exp = echo_server(client_fd.get(), socket_infos[client_fd.get()]);
         if(!session_exp){
             std::cerr << "echo_server failed: " << to_string(session_exp.error()) << "\n";
+            socket_infos.erase(client_fd.get());
             continue;
         }
+        socket_infos.erase(client_fd.get());
     }
 
     return 0;
