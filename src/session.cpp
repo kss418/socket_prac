@@ -5,7 +5,7 @@
 #include <utility>
 
 std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
-    std::array <char, BUF_SIZE> buf{};
+    std::string buf;
     auto ep_exp = make_peer_endpoint(client_fd);
     if(!ep_exp) return std::unexpected(ep_exp.error());
     endpoint ep = std::move(*ep_exp);
@@ -16,19 +16,17 @@ std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
 
     std::cout << ep_str << " is connected\n";
     while(true){
-        ssize_t recv_byte = ::recv(client_fd, buf.data(), buf.size(), 0);
-        if(recv_byte == 0){
+        auto recv_ret_exp = drain_recv(client_fd, buf);
+        if(!recv_ret_exp) return std::unexpected(recv_ret_exp.error());
+        auto recv_ret = std::move(*recv_ret_exp);
+
+        if(recv_ret.closed){
             std::cout << ep_str << " is disconnected\n";
             return {};
         }
 
-        if(recv_byte == -1){
-            int ec = errno;
-            if(ec == EINTR) continue;
-            return std::unexpected(error_code::from_errno(ec));
-        }
-
-        si.append(buf.data(), static_cast<std::size_t>(recv_byte));
+        si.append(buf.data(), static_cast<std::size_t>(recv_ret.byte));
+        si.append("\n");
         auto flush_send_exp = flush_send(client_fd, si);
         if(!flush_send_exp) return std::unexpected(flush_send_exp.error());
 
@@ -38,11 +36,12 @@ std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
 }
 
 std::expected <void, error_code> echo_client(int server_fd, socket_info& si){
-    std::array <char, BUF_SIZE> buf{};
+    std::string buf;
     while(true){
         std::string s;
         if(!std::getline(std::cin, s)) return {};
 
+        s.push_back('\n');
         si.append(s);
         auto flush_send_exp = flush_send(server_fd, si);
         if(!flush_send_exp){
@@ -50,19 +49,9 @@ std::expected <void, error_code> echo_client(int server_fd, socket_info& si){
             continue;
         }
 
-        std::size_t send_byte = *flush_send_exp;
-        size_t recv_byte = 0;
-        while(recv_byte < send_byte){
-            ssize_t now = ::recv(server_fd, buf.data(), std::min<size_t>(send_byte - recv_byte, buf.size()), 0);
-            if(now == -1){
-                int ec = errno;
-                if(ec == EINTR) continue;
-                return std::unexpected(error_code::from_errno(ec));
-            }
-
-            if(now == 0) return {};
-            recv_byte += static_cast<std::size_t>(now);
-            std::cout << std::string_view(buf.data(), now) << "\n";
-        }
+        auto recv_ret_exp = drain_recv(server_fd, buf);
+        if(!recv_ret_exp) return std::unexpected(recv_ret_exp.error());
+        flush_recv(buf);
+        if(recv_ret_exp->closed) return {};
     }
 }
