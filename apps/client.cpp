@@ -4,6 +4,7 @@
 #include "../include/fd_helper.hpp"
 #include "../include/session.hpp"
 #include "../include/error_code.hpp"
+#include "../include/io_helper.hpp"
 
 int main(){
     auto addr_exp = get_addr_client("127.0.0.1", "8080");
@@ -19,7 +20,9 @@ int main(){
     }
 
     unique_fd server_fd = std::move(*server_fd_exp);
-    auto session_exp = echo_client(server_fd.get());
+    socket_info si{};
+
+    auto session_exp = echo_client(server_fd.get(), si);
     if(!session_exp){
         std::cerr << "echo_client failed: " << to_string(session_exp.error()) << "\n";
         return 1;
