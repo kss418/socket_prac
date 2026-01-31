@@ -1,6 +1,7 @@
 #include "../include/ep_helper.hpp"
 #include <sys/epoll.h>
 #include <fcntl.h>
+#include <cerrno>
 
 std::expected <void, error_code> set_nonblocking(int fd){
     int flags = ::fcntl(fd, F_GETFL, 0);

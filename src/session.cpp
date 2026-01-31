@@ -72,6 +72,7 @@ std::expected <void, error_code> echo_client(int server_fd){
                 return std::unexpected(error_code::from_errno(ec));
             }
 
+            if(now == 0) return {};
             recv_byte += now;
             std::cout << std::string_view(buf.data(), now) << "\n";
         }
