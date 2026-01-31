@@ -9,3 +9,4 @@
 
 std::expected<unique_fd, error_code> make_listen_fd(addrinfo* head);
 std::expected<unique_fd, error_code> make_client_fd(int listen_fd);
+std::expected<unique_fd, error_code> make_server_fd(addrinfo* head);
