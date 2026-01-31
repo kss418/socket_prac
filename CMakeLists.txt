@@ -19,5 +19,7 @@ target_include_directories(socket_prac PUBLIC
 )
 
 add_executable(server apps/server.cpp)
-
 target_link_libraries(server PRIVATE socket_prac)
+
+add_executable(client apps/client.cpp)
+target_link_libraries(client PRIVATE socket_prac)

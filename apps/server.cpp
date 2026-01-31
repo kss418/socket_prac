@@ -9,7 +9,7 @@
 int main(){
     auto addr_exp = get_addr_server("8080");
     if(!addr_exp){
-        std::cerr << "try_get_addr failed: " << to_string(addr_exp.error()) << "\n";
+        std::cerr << "get_addr_server failed: " << to_string(addr_exp.error()) << "\n";
         return 1;
     }
 

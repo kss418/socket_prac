@@ -1,5 +1,4 @@
 #include <iostream>
-#include <cstring>
 #include "../include/unique_fd.hpp"
 #include "../include/addr.hpp"
 #include "../include/fd_helper.hpp"
@@ -9,7 +8,7 @@
 int main(){
     auto addr_exp = get_addr_client("127.0.0.1", "8080");
     if(!addr_exp){
-        std::cerr << "try_get_addr failed: " << to_string(addr_exp.error()) << "\n";
+        std::cerr << "get_addr_client failed: " << to_string(addr_exp.error()) << "\n";
         return 1;
     }
 
@@ -20,12 +19,10 @@ int main(){
     }
 
     unique_fd server_fd = std::move(*server_fd_exp);
-    while(true){
-        auto session_exp = echo_client(server_fd.get());
-        if(!session_exp){
-            std::cerr << "echo_client failed: " << to_string(session_exp.error()) << "\n";
-            continue;
-        }
+    auto session_exp = echo_client(server_fd.get());
+    if(!session_exp){
+        std::cerr << "echo_client failed: " << to_string(session_exp.error()) << "\n";
+        return 1;
     }
 
     return 0;

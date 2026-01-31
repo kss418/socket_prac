@@ -57,7 +57,7 @@ std::expected <void, error_code> echo_client(int server_fd){
             }
 
             recv_byte += now;
-            std::cout << std::string_view(buf.data(), now);
+            std::cout << std::string_view(buf.data(), now) << "\n";
         }
     }
 }

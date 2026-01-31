@@ -42,10 +42,7 @@ std::expected<unique_fd, error_code> make_server_fd(addrinfo* head){
         unique_fd fd(::socket(p->ai_family, p->ai_socktype, p->ai_protocol));
         if(!fd){ ec = errno; continue; }
 
-        if(::connect(fd.get(), p->ai_addr, p->ai_addrlen) == 0){
-            return std::unexpected(error_code::from_errno(ec));
-        }
-
+        if(::connect(fd.get(), p->ai_addr, p->ai_addrlen) == 0) return fd;
         ec = errno;
     }
 
