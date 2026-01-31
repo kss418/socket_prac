@@ -1,13 +1,27 @@
 #include "../include/session.hpp"
+#include "../include/fd_helper.hpp"
 #include <iostream>
 #include <string_view>
+#include <utility>
 
 std::expected <void, error_code> echo_server(int client_fd){
     std::array <char, BUF_SIZE> buf{};
+    auto ep_exp = make_peer_endpoint(client_fd);
+    if(!ep_exp) return std::unexpected(ep_exp.error());
+    endpoint ep = std::move(*ep_exp);
+    
+    auto ep_str_exp = ep.get_string();
+    if(!ep_str_exp) return std::unexpected(ep_str_exp.error());
+    std::string ep_str = std::move(*ep_str_exp);
 
+    std::cout << ep_str << " is connected\n";
     while(true){
         ssize_t recv_byte = ::recv(client_fd, buf.data(), buf.size(), 0);
-        if(recv_byte == 0) return {};
+        if(recv_byte == 0){
+            std::cout << ep_str << " is disconnected\n";
+            return {};
+        }
+
         if(recv_byte == -1){
             int ec = errno;
             if(ec == EINTR) continue;
@@ -25,6 +39,7 @@ std::expected <void, error_code> echo_server(int client_fd){
 
             if(now == 0) return std::unexpected(error_code::from_errno(EPIPE));
             send_byte += now;
+            std::cout << ep_str << " sends " << now << " byte" << (now == 1 ? "\n" : "s\n");
         }
     }
 }
