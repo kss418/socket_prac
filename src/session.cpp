@@ -1,6 +1,6 @@
 #include "../include/session.hpp"
 
-std::expected <void, int> echo_session(int client_fd){
+std::expected <void, error_code> echo_session(int client_fd){
     std::array <char, BUF_SIZE> buf{};
     while(true){
         ssize_t recv_byte = ::recv(client_fd, buf.data(), buf.size(), 0);
@@ -8,7 +8,7 @@ std::expected <void, int> echo_session(int client_fd){
         if(recv_byte == -1){
             int ec = errno;
             if(ec == EINTR) continue;
-            return std::unexpected(ec);
+            return std::unexpected(error_code::from_errno(ec));
         }
 
         ssize_t send_byte = 0;
@@ -17,10 +17,10 @@ std::expected <void, int> echo_session(int client_fd){
             if(now == -1){
                 int ec = errno;
                 if(ec == EINTR) continue;
-                return std::unexpected(ec);
+                return std::unexpected(error_code::from_errno(ec));
             }
 
-            if(now == 0) return std::unexpected(EPIPE);
+            if(now == 0) return std::unexpected(error_code::from_errno(EPIPE));
             send_byte += now;
         }
     }

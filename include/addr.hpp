@@ -3,6 +3,7 @@
 #include <memory>
 #include <expected>
 #include <string_view>
+#include "../include/error_code.hpp"
 
 struct addr{
 public:
@@ -34,5 +35,5 @@ public:
     explicit operator bool() const noexcept;
 };
 
-[[nodiscard]] std::expected <addr, int> get_addr_server(std::string_view port, addr::option opt = {});
-[[nodiscard]] std::expected <addr, int> get_addr_client(std::string_view host, std::string_view port, addr::option opt = {});
+[[nodiscard]] std::expected <addr, error_code> get_addr_server(std::string_view port, addr::option opt = {});
+[[nodiscard]] std::expected <addr, error_code> get_addr_client(std::string_view host, std::string_view port, addr::option opt = {});
