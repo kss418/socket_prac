@@ -4,6 +4,7 @@
 
 std::expected <void, error_code> echo_server(int client_fd){
     std::array <char, BUF_SIZE> buf{};
+
     while(true){
         ssize_t recv_byte = ::recv(client_fd, buf.data(), buf.size(), 0);
         if(recv_byte == 0) return {};
