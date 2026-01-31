@@ -1,10 +1,12 @@
 #include <iostream>
 #include <cstring>
+#include <unordered_map>
 #include "../include/unique_fd.hpp"
 #include "../include/addr.hpp"
 #include "../include/fd_helper.hpp"
 #include "../include/session.hpp"
 #include "../include/error_code.hpp"
+#include "../include/io_helper.hpp"
 
 int main(){
     auto addr_exp = get_addr_server("8080");
@@ -19,6 +21,8 @@ int main(){
         return 1;
     }
 
+    std::unordered_map <int, socket_info> socket_infos;
+
     unique_fd listen_fd = std::move(*listen_fd_exp);
     while(true){
         auto client_fd_exp = make_client_fd(listen_fd.get());
@@ -28,7 +32,7 @@ int main(){
         }
 
         unique_fd client_fd = std::move(*client_fd_exp);
-        auto session_exp = echo_server(client_fd.get());
+        auto session_exp = echo_server(client_fd.get(), socket_infos[client_fd.get()]);
         if(!session_exp){
             std::cerr << "echo_server failed: " << to_string(session_exp.error()) << "\n";
             continue;

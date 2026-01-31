@@ -3,7 +3,8 @@
 #include <cerrno>
 #include <sys/socket.h>
 #include "../include/error_code.hpp"
+#include "../include/io_helper.hpp"
 constexpr int BUF_SIZE = 4096;
 
-std::expected <void, error_code> echo_server(int client_fd);
+std::expected <void, error_code> echo_server(int client_fd, socket_info& si);
 std::expected <void, error_code> echo_client(int server_fd);

@@ -4,7 +4,7 @@
 #include <string_view>
 #include <utility>
 
-std::expected <void, error_code> echo_server(int client_fd){
+std::expected <void, error_code> echo_server(int client_fd, socket_info& si){
     std::array <char, BUF_SIZE> buf{};
     auto ep_exp = make_peer_endpoint(client_fd);
     if(!ep_exp) return std::unexpected(ep_exp.error());
@@ -28,19 +28,15 @@ std::expected <void, error_code> echo_server(int client_fd){
             return std::unexpected(error_code::from_errno(ec));
         }
 
-        ssize_t send_byte = 0;
-        while(send_byte < recv_byte){
-            ssize_t now = ::send(client_fd, buf.data() + send_byte, recv_byte - send_byte, MSG_NOSIGNAL);
-            if(now == -1){
-                int ec = errno;
-                if(ec == EINTR) continue;
-                return std::unexpected(error_code::from_errno(ec));
-            }
-
-            if(now == 0) return std::unexpected(error_code::from_errno(EPIPE));
-            send_byte += now;
-            std::cout << ep_str << " sends " << now << " byte" << (now == 1 ? "\n" : "s\n");
+        si.append(buf.data(), static_cast<std::size_t>(recv_byte));
+        auto flush_send_exp = flush_send(client_fd, si);
+        if(!flush_send_exp){
+            std::cerr << ep_str << " send failed" << to_string(flush_send_exp.error()) << "\n";
+            continue;
         }
+
+        size_t send_byte = *flush_send_exp;
+        std::cout << ep_str << " sends " << send_byte << " byte" << (send_byte == 1 ? "\n" : "s\n");
     }
 }
 

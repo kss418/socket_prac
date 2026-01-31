@@ -13,6 +13,7 @@ add_library(socket_prac
     src/session.cpp
     src/unique_fd.cpp
     src/ep_helper.cpp
+    src/io_helper.cpp
 )
 
 target_include_directories(socket_prac PUBLIC
