@@ -28,9 +28,9 @@ int main(){
         }
 
         unique_fd client_fd = std::move(*client_fd_exp);
-        auto session_exp = echo_session(client_fd.get());
+        auto session_exp = echo_server(client_fd.get());
         if(!session_exp){
-            std::cerr << "echo_session failed: " << to_string(session_exp.error()) << "\n";
+            std::cerr << "echo_server failed: " << to_string(session_exp.error()) << "\n";
             continue;
         }
     }

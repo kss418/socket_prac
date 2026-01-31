@@ -13,24 +13,17 @@ int main(){
         return 1;
     }
 
-    auto listen_fd_exp = make_listen_fd(addr_exp->get());
-    if(!listen_fd_exp){
-        std::cerr << "make_listen_fd failed: " << to_string(listen_fd_exp.error()) << "\n";
+    auto server_fd_exp = make_server_fd(addr_exp->get());
+    if(!server_fd_exp){
+        std::cerr << "make_server_fd failed: " << to_string(server_fd_exp.error()) << "\n";
         return 1;
     }
 
-    unique_fd listen_fd = std::move(*listen_fd_exp);
+    unique_fd server_fd = std::move(*server_fd_exp);
     while(true){
-        auto client_fd_exp = make_client_fd(listen_fd.get());
-        if(!client_fd_exp){
-            std::cerr << "make_client_fd failed " << to_string(client_fd_exp.error()) << "\n";
-            continue;
-        }
-
-        unique_fd client_fd = std::move(*client_fd_exp);
-        auto session_exp = echo_session(client_fd.get());
+        auto session_exp = echo_client(server_fd.get());
         if(!session_exp){
-            std::cerr << "echo_session failed: " << to_string(session_exp.error()) << "\n";
+            std::cerr << "echo_client failed: " << to_string(session_exp.error()) << "\n";
             continue;
         }
     }
