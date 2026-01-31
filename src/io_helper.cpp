@@ -1,4 +1,6 @@
 #include "../include/io_helper.hpp"
+#include <cerrno>
+#include <sys/socket.h>
 
 bool socket_info::buf_clear(){
     if(buf.size() != offset) return false;
