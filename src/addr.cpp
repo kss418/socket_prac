@@ -34,7 +34,7 @@ std::expected <addr, error_code> get_addr_server(
 ){
     addr ret;
     int ec = ret.resolve_server(port, opt);
-    if(ec) return std::unexpected(error_code::from_errno(ec));
+    if(ec) return std::unexpected(error_code::from_gai(ec));
     return ret;
 };
 
@@ -43,6 +43,6 @@ std::expected <addr, error_code> get_addr_client(
 ){
     addr ret;
     int ec = ret.resolve_client(host, port, opt);
-    if(ec) return std::unexpected(error_code::from_errno(ec));
+    if(ec) return std::unexpected(error_code::from_gai(ec));
     return ret;
 };
