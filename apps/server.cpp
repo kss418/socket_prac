@@ -92,6 +92,14 @@ int main(){
 
                 si.append(si.recv_buf);
                 si.recv_buf.clear();
+                if(si.interest & EPOLLOUT) continue;
+                si.interest |= EPOLLOUT;
+                
+                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+                if(!mod_ep_exp){
+                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                }
             }
 
             if(event & EPOLLOUT){
