@@ -53,12 +53,22 @@ std::expected<unique_fd, error_code> make_server_fd(addrinfo* head){
 const sockaddr* endpoint::addr() const noexcept{ return reinterpret_cast<const sockaddr*>(&ss); }
 sockaddr* endpoint::addr() noexcept{ return reinterpret_cast<sockaddr*>(&ss); }
 
-std::expected <std::string, error_code> endpoint::get_string() const{
-    char ip[NI_MAXHOST]{};
-    char port[NI_MAXSERV]{};
+std::expected <void, error_code> endpoint::init_string(){
     int ec = ::getnameinfo(this->addr(), this->len, ip, sizeof(ip), port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
     if(ec != 0) return std::unexpected(error_code::from_gai(ec));
-    return std::string(ip) + ":" + std::string(port);
+    return {};
+}
+
+std::string endpoint::get_ip(){
+    return std::string(ip);
+}
+
+std::string endpoint::get_port(){
+    return std::string(port);
+}
+
+std::string to_string(const endpoint& ep){
+    return std::string(ep.ip) + ":" + std::string(ep.port);
 }
 
 std::expected<endpoint, error_code> make_peer_endpoint(int fd){

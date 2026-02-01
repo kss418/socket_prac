@@ -110,12 +110,15 @@ std::expected <void, error_code> register_client_fd(
     auto ep_exp = make_peer_endpoint(fd);
     if(!ep_exp) return std::unexpected(ep_exp.error());
 
+    auto init_str_exp = ep_exp->init_string();
+    if(!init_str_exp) return std::unexpected(init_str_exp.error());
+
     auto add_ep_exp = add_ep(epfd, fd, events);
     if(!add_ep_exp) return std::unexpected(add_ep_exp.error());
     
     socket_info si{};
     si.ufd = std::move(ufd);
-    si.ep = *ep_exp;
+    si.ep = std::move(*ep_exp);
     si.interest = events;
 
     infos.emplace(fd, std::move(si));

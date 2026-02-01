@@ -74,8 +74,10 @@ int main(){
                 if(!rcfd){
                     std::cerr << "register_client_fd failed: " << to_string(rcfd.error()) << "\n";
                     continue;
-                }
+                } 
 
+                auto ep = socket_infos[fd].ep;
+                std::cout << to_string(ep) << "is connected" << "\n";
                 continue;
             }
 
@@ -94,7 +96,7 @@ int main(){
                 si.recv_buf.clear();
                 if(si.interest & EPOLLOUT) continue;
                 si.interest |= EPOLLOUT;
-                
+
                 auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
                 if(!mod_ep_exp){
                     std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
