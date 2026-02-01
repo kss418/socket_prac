@@ -54,7 +54,11 @@ int main(){
             uint32_t event = events[i].events;
             
             if(event & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
-                if(fd == listen_fd.get()) break;
+                if(fd == listen_fd.get()){
+                    std::cerr << "listen fd error" << "\n";
+                    return 1; 
+                }
+                
                 unregister_fd(epfd.get(), socket_infos, fd);
                 continue;
             }
