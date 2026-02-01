@@ -53,7 +53,7 @@ int main(){
             int fd = events[i].data.fd;
             uint32_t event = events[i].events;
             
-            if(event & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
+            if(event & (EPOLLERR | EPOLLHUP)){ // error
                 if(fd == listen_fd.get()){
                     std::cerr << "listen fd error" << "\n";
                     return 1; 
@@ -63,7 +63,7 @@ int main(){
                 continue;
             }
 
-            if(fd == listen_fd.get()){
+            if(fd == listen_fd.get()){ // accept socket
                 auto client_fd_exp = make_client_fd(listen_fd.get());
                 if(!client_fd_exp){
                     std::cerr << "make_client_fd failed: " << to_string(client_fd_exp.error()) << "\n";
@@ -85,7 +85,7 @@ int main(){
             if(it == socket_infos.end()) continue;
             auto& si = it->second;
 
-            if(event & EPOLLIN){
+            if(event & (EPOLLIN | EPOLLRDHUP)){ // recv data
                 auto dr_exp = drain_recv(fd, si);
                 if(!dr_exp){
                     std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
@@ -96,14 +96,15 @@ int main(){
                 std::cout << to_string(si.ep) << " sends " << recv_info.byte 
                     << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-                if(recv_info.closed){
+                si.append(si.recv_buf);
+                si.recv_buf.clear();
+
+                if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
                     std::cout << to_string(si.ep) << " is disconnected" << "\n";
                     unregister_fd(epfd.get(), socket_infos, fd);
                     continue;
                 }
 
-                si.append(si.recv_buf);
-                si.recv_buf.clear();
                 if(si.interest & EPOLLOUT) continue;
                 si.interest |= EPOLLOUT;
 
@@ -114,7 +115,7 @@ int main(){
                 }
             }
 
-            if(event & EPOLLOUT){
+            if(event & EPOLLOUT){ // send data
                 auto fs_exp = flush_send(fd, si);
                 if(!fs_exp){
                     std::cerr << "flush_send failed: " << to_string(fs_exp.error()) << "\n";
