@@ -8,32 +8,32 @@
 #include <iostream>
 
 bool socket_info::buf_clear(){
-    if(buf.size() != offset) return false;
-    buf.clear();
+    if(send_buf.size() != offset) return false;
+    send_buf.clear();
     offset = 0;
     return true;
 }
 
 bool socket_info::buf_compact(){
     if(offset < 8192) return false;
-    if (offset * 2 < buf.size()) return false; 
-    buf.erase(0, offset);
+    if (offset * 2 < send_buf.size()) return false; 
+    send_buf.erase(0, offset);
     offset = 0;
     return true;
 }
 
 void socket_info::append(std::string_view sv){
-    buf += sv;
+    send_buf += sv;
 }
 
 void socket_info::append(const char* p, std::size_t n){
-    buf.append(p, n);
+    send_buf.append(p, n);
 }
 
 std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si){
     std::size_t send_byte = 0;
-    while(si.offset < si.buf.size()){
-        ssize_t now = ::send(fd, si.buf.data() + si.offset, si.buf.size() - si.offset, MSG_NOSIGNAL);
+    while(si.offset < si.send_buf.size()){
+        ssize_t now = ::send(fd, si.send_buf.data() + si.offset, si.send_buf.size() - si.offset, MSG_NOSIGNAL);
         if(now == -1){
             int ec = errno;
             if(ec == EINTR) continue;
@@ -53,15 +53,15 @@ std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si){
     return send_byte;
 }
 
-std::expected <recv_info, error_code> drain_recv(int fd, std::string& buf){
+std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
     recv_info ret;
     std::array <char, BUF_SIZE> tmp{};
     while(true){
         ssize_t now = ::recv(fd, tmp.data(), tmp.size(), 0);
         if(now > 0){
-            buf.append(tmp.data(), static_cast<std::size_t>(now));
+            si.recv_buf.append(tmp.data(), static_cast<std::size_t>(now));
             ret.byte += static_cast<std::size_t>(now);
-            if(buf.find('\n') != std::string::npos) return ret;
+            if(si.recv_buf.find('\n') != std::string::npos) return ret;
             continue;
         }
 

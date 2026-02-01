@@ -8,7 +8,8 @@
 constexpr int BUF_SIZE = 4096;
 
 struct socket_info{
-    std::string buf;
+    std::string recv_buf;
+    std::string send_buf;
     std::size_t offset = 0;
     uint32_t interest = 0;
     unique_fd ufd;
@@ -27,7 +28,7 @@ struct recv_info{
 };
 
 std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si);
-std::expected <recv_info, error_code> drain_recv(int fd, std::string& buf);
+std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si);
 void flush_recv(std::string& recv_buf);
 
 std::expected <void, error_code> register_listen_fd(int epfd, int ufd);

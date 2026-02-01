@@ -58,7 +58,7 @@ int main(){
                     std::cerr << "listen fd error" << "\n";
                     return 1; 
                 }
-                
+
                 unregister_fd(epfd.get(), socket_infos, fd);
                 continue;
             }
@@ -84,7 +84,14 @@ int main(){
             auto& si = it->second;
 
             if(event & EPOLLIN){
+                auto dr_exp = drain_recv(fd, si);
+                if(!dr_exp){
+                    std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
+                    continue; 
+                }
 
+                si.append(si.recv_buf);
+                si.recv_buf.clear();
             }
 
             if(event & EPOLLOUT){
@@ -93,8 +100,15 @@ int main(){
                     std::cerr << "flush_send failed: " << to_string(fs_exp.error()) << "\n";
                     continue; 
                 }
-
-         
+                
+                if(si.offset < si.send_buf.size()) continue;
+                si.interest &= ~EPOLLOUT;
+                
+                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+                if(!mod_ep_exp){
+                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                }
             }
         }
     }
