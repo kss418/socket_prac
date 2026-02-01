@@ -97,7 +97,7 @@ std::expected <void, error_code> register_listen_fd(int epfd, int fd){
     return {};
 }
 
-std::expected <void, error_code> register_client_fd(
+std::expected <int, error_code> register_client_fd(
     int epfd, std::unordered_map<int, socket_info>& infos, unique_fd ufd, uint32_t events
 ){
     int fd = ufd.get();
@@ -122,7 +122,7 @@ std::expected <void, error_code> register_client_fd(
     si.interest = events;
 
     infos.emplace(fd, std::move(si));
-    return {};
+    return fd;
 }
 
 std::expected <void, error_code> unregister_fd(

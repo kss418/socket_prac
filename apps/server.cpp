@@ -76,8 +76,8 @@ int main(){
                     continue;
                 } 
 
-                auto ep = socket_infos[fd].ep;
-                std::cout << to_string(ep) << "is connected" << "\n";
+                auto ep = socket_infos[*rcfd].ep;
+                std::cout << to_string(ep) << " is connected" << "\n";
                 continue;
             }
 
@@ -90,6 +90,16 @@ int main(){
                 if(!dr_exp){
                     std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
                     continue; 
+                }
+
+                auto recv_info = *dr_exp;
+                std::cout << to_string(si.ep) << " sends " << recv_info.byte 
+                    << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
+
+                if(recv_info.closed){
+                    std::cout << to_string(si.ep) << " is disconnected" << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                    continue;
                 }
 
                 si.append(si.recv_buf);

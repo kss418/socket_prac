@@ -34,7 +34,7 @@ void flush_recv(std::string& recv_buf);
 
 std::expected <void, error_code> register_listen_fd(int epfd, int ufd);
 
-std::expected <void, error_code> register_client_fd(
+std::expected <int, error_code> register_client_fd(
     int epfd, std::unordered_map<int, socket_info>& infos, unique_fd ufd, uint32_t events
 );
 
