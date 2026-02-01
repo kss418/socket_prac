@@ -32,8 +32,8 @@ int main(){
     }
 
     std::unordered_map <int, socket_info> socket_infos;
-    int listen_fd = listen_fd_exp->get();
-    auto rlfd_exp = register_listen_fd(epfd.get(), listen_fd);
+    auto listen_fd = std::move(*listen_fd_exp);
+    auto rlfd_exp = register_listen_fd(epfd.get(), listen_fd.get());
     if(!rlfd_exp){
         std::cerr << "register_fd failed: " << to_string(rlfd_exp.error()) << "\n";
         return 1;
@@ -54,18 +54,19 @@ int main(){
             uint32_t event = events[i].events;
             
             if(event & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
+                if(fd == listen_fd.get()) break;
                 unregister_fd(epfd.get(), socket_infos, fd);
                 continue;
             }
 
-            if(fd == listen_fd){
-                auto client_fd_exp = make_client_fd(listen_fd);
+            if(fd == listen_fd.get()){
+                auto client_fd_exp = make_client_fd(listen_fd.get());
                 if(!client_fd_exp){
                     std::cerr << "make_client_fd failed: " << to_string(client_fd_exp.error()) << "\n";
                     continue;
                 }
 
-                auto rcfd = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN);
+                auto rcfd = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
                 if(!rcfd){
                     std::cerr << "register_client_fd failed: " << to_string(rcfd.error()) << "\n";
                     continue;
