@@ -18,7 +18,7 @@ std::expected <void, error_code> set_nonblocking(int fd){
     return {};
 }
 
-std::expected <void, error_code> ep_add(int epfd, int fd, uint32_t events){
+std::expected <void, error_code> add_ep(int epfd, int fd, uint32_t events){
     epoll_event ev{};
     ev.events = events;
     ev.data.fd = fd;
@@ -30,7 +30,7 @@ std::expected <void, error_code> ep_add(int epfd, int fd, uint32_t events){
     return {};
 }
 
-std::expected <void, error_code> ep_mod(int epfd, int fd, uint32_t events){
+std::expected <void, error_code> mod_ep(int epfd, int fd, uint32_t events){
     epoll_event ev{};
     ev.events = events;
     ev.data.fd = fd;
@@ -42,7 +42,7 @@ std::expected <void, error_code> ep_mod(int epfd, int fd, uint32_t events){
     return {};
 }
 
-std::expected <void, error_code> ep_del(int epfd, int fd){
+std::expected <void, error_code> del_ep(int epfd, int fd){
     int ec = ::epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
     if(ec == -1){
         int ec = errno;
