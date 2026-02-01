@@ -1,12 +1,15 @@
 #include <iostream>
 #include <cstring>
 #include <unordered_map>
+#include <sys/epoll.h>
+#include <array>
 #include "../include/unique_fd.hpp"
 #include "../include/addr.hpp"
 #include "../include/fd_helper.hpp"
 #include "../include/session.hpp"
 #include "../include/error_code.hpp"
 #include "../include/io_helper.hpp"
+#include "../include/ep_helper.hpp"
 
 int main(){
     auto addr_exp = get_addr_server("8080");
@@ -21,24 +24,116 @@ int main(){
         return 1;
     }
 
+    auto epfd = unique_fd{::epoll_create1(EPOLL_CLOEXEC)};
+    if(!epfd){
+        int ec = errno;
+        std::cerr << "epoll_create1 failed: " << std::strerror(ec) << "\n";
+        return 1;
+    }
+
     std::unordered_map <int, socket_info> socket_infos;
+    auto listen_fd = std::move(*listen_fd_exp);
+    auto rlfd_exp = register_listen_fd(epfd.get(), listen_fd.get());
+    if(!rlfd_exp){
+        std::cerr << "register_fd failed: " << to_string(rlfd_exp.error()) << "\n";
+        return 1;
+    }
 
-    unique_fd listen_fd = std::move(*listen_fd_exp);
+    std::array <epoll_event, 128> events;
     while(true){
-        auto client_fd_exp = make_client_fd(listen_fd.get());
-        if(!client_fd_exp){
-            std::cerr << "make_client_fd failed " << to_string(client_fd_exp.error()) << "\n";
-            continue;
+        int event_sz = ::epoll_wait(epfd.get(), events.data(), events.size(), -1);
+        if(event_sz == -1){
+            int ec = errno;
+            if(errno == EINTR) continue;
+            std::cerr << "event loop failed: " << std::strerror(ec) << "\n";
+            return 1;
         }
 
-        unique_fd client_fd = std::move(*client_fd_exp);
-        auto session_exp = echo_server(client_fd.get(), socket_infos[client_fd.get()]);
-        if(!session_exp){
-            std::cerr << "echo_server failed: " << to_string(session_exp.error()) << "\n";
-            socket_infos.erase(client_fd.get());
-            continue;
+        for(int i = 0;i < event_sz;++i){
+            int fd = events[i].data.fd;
+            uint32_t event = events[i].events;
+            
+            if(event & (EPOLLERR | EPOLLHUP)){ // error
+                if(fd == listen_fd.get()){
+                    std::cerr << "listen fd error" << "\n";
+                    return 1; 
+                }
+
+                unregister_fd(epfd.get(), socket_infos, fd);
+                continue;
+            }
+
+            if(fd == listen_fd.get()){ // accept socket
+                auto client_fd_exp = make_client_fd(listen_fd.get());
+                if(!client_fd_exp){
+                    std::cerr << "make_client_fd failed: " << to_string(client_fd_exp.error()) << "\n";
+                    continue;
+                }
+
+                auto rcfd = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
+                if(!rcfd){
+                    std::cerr << "register_client_fd failed: " << to_string(rcfd.error()) << "\n";
+                    continue;
+                } 
+
+                auto ep = socket_infos[*rcfd].ep;
+                std::cout << to_string(ep) << " is connected" << "\n";
+                continue;
+            }
+
+            auto it = socket_infos.find(fd);
+            if(it == socket_infos.end()) continue;
+            auto& si = it->second;
+
+            if(event & (EPOLLIN | EPOLLRDHUP)){ // recv data
+                auto dr_exp = drain_recv(fd, si);
+                if(!dr_exp){
+                    std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                    continue; 
+                }
+
+                auto recv_info = *dr_exp;
+                std::cout << to_string(si.ep) << " sends " << recv_info.byte 
+                    << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
+
+                si.append(si.recv_buf);
+                si.recv_buf.clear();
+
+                if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
+                    std::cout << to_string(si.ep) << " is disconnected" << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                    continue;
+                }
+
+                if(si.interest & EPOLLOUT) continue;
+                si.interest |= EPOLLOUT;
+
+                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+                if(!mod_ep_exp){
+                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                }
+            }
+
+            if(event & EPOLLOUT){ // send data
+                auto fs_exp = flush_send(fd, si);
+                if(!fs_exp){
+                    std::cerr << "flush_send failed: " << to_string(fs_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                    continue; 
+                }
+                
+                if(si.offset < si.send_buf.size()) continue;
+                si.interest &= ~EPOLLOUT;
+                
+                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+                if(!mod_ep_exp){
+                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
+                }
+            }
         }
-        socket_infos.erase(client_fd.get());
     }
 
     return 0;
