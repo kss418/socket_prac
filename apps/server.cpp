@@ -89,6 +89,7 @@ int main(){
                 auto dr_exp = drain_recv(fd, si);
                 if(!dr_exp){
                     std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
                     continue; 
                 }
 
@@ -119,6 +120,7 @@ int main(){
                 auto fs_exp = flush_send(fd, si);
                 if(!fs_exp){
                     std::cerr << "flush_send failed: " << to_string(fs_exp.error()) << "\n";
+                    unregister_fd(epfd.get(), socket_infos, fd);
                     continue; 
                 }
                 
