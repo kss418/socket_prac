@@ -8,3 +8,11 @@ std::string to_string(const error_code& ec){
     else if(ec.domain == error_domain::gai_domain) return ::gai_strerror(ec.code);
     return "unknown error";
 }
+
+std::ostream& operator<<(std::ostream& os, const error_code& ec){
+    return os << to_string(ec);
+}
+
+void handle_error(const std::string& msg, const error_code& ec){
+    std::cerr << msg << " " << ec << "\n";
+}
