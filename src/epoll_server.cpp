@@ -38,7 +38,7 @@ std::expected <void, error_code> epoll_server::run(){
         if(event_sz == -1){
             int ec = errno;
             if(errno == EINTR) continue;
-            handle_error("run/event loop failed", error_code::from_errno(ec));
+            handle_error("run/event loop error", error_code::from_errno(ec));
             return std::unexpected(error_code::from_errno(ec));
         }
 
