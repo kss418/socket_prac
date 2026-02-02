@@ -3,7 +3,7 @@
 #include "../include/ep_helper.hpp"
 
 std::expected <void, error_code> epoll_server::init(){
-    auto addr_exp = get_addr_server("8080");
+    auto addr_exp = get_addr_server(port);
     if(!addr_exp){
         handle_error("get_addr_server failed", addr_exp);
         return std::unexpected(addr_exp.error());

@@ -17,8 +17,8 @@ public:
     epoll_server(const epoll_server&) = delete;
     epoll_server& operator=(const epoll_server&) = delete;
 
-    epoll_server(epoll_server&& other) noexcept;
-    epoll_server& operator=(epoll_server&& other) noexcept;
+    epoll_server(epoll_server&& other) noexcept = default;
+    epoll_server& operator=(epoll_server&& other) noexcept = default;
 
     epoll_server(const char* port = "8080") : port(port){}
     std::expected <void, error_code> init();
