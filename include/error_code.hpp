@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <expected>
 #include <iostream>
+#include <cassert>
 
 enum class error_domain { errno_domain, gai_domain };
 struct error_code{
