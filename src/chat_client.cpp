@@ -41,4 +41,6 @@ std::expected <void, error_code> chat_client::run(){
         flush_recv(si.recv_buf);
         if(recv_ret_exp->closed) return {};
     }
+
+    return {};
 }
