@@ -60,20 +60,7 @@ std::expected <void, error_code> epoll_server::run(){
             }
 
             if(fd == listen_fd.get()){ // accept socket
-                auto client_fd_exp = make_client_fd(listen_fd.get());
-                if(!client_fd_exp){
-                    handle_error("make_client_fd failed", client_fd_exp);
-                    continue;
-                }
-
-                auto rcfd_exp = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
-                if(!rcfd_exp){
-                    handle_error("register_client_fd failed", rcfd_exp);
-                    continue;
-                } 
-
-                auto ep = socket_infos[*rcfd_exp].ep;
-                std::cout << to_string(ep) << " is connected" << "\n";
+                accept();
                 continue;
             }
 
@@ -81,54 +68,78 @@ std::expected <void, error_code> epoll_server::run(){
             if(it == socket_infos.end()) continue;
             auto& si = it->second;
 
-            if(event & (EPOLLIN | EPOLLRDHUP)){ // recv data
-                auto dr_exp = drain_recv(fd, si);
-                if(!dr_exp){
-                    handle_error("drain_recv failed", dr_exp);
-                    unregister_fd(epfd.get(), socket_infos, fd);
-                    continue; 
-                }
-
-                auto recv_info = *dr_exp;
-                std::cout << to_string(si.ep) << " sends " << recv_info.byte 
-                    << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
-
-                si.append(si.recv_buf);
-                si.recv_buf.clear();
-
-                if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
-                    std::cout << to_string(si.ep) << " is disconnected" << "\n";
-                    unregister_fd(epfd.get(), socket_infos, fd);
-                    continue;
-                }
-
-                if(si.interest & EPOLLOUT) continue;
-                si.interest |= EPOLLOUT;
-
-                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
-                if(!mod_ep_exp){
-                    handle_error("mod_ep failed", mod_ep_exp);
-                    unregister_fd(epfd.get(), socket_infos, fd);
-                }
-            }
-
-            if(event & EPOLLOUT){ // send data
-                auto fs_exp = flush_send(fd, si);
-                if(!fs_exp){
-                    handle_error("flush_send failed", fs_exp);
-                    unregister_fd(epfd.get(), socket_infos, fd);
-                    continue; 
-                }
-                
-                if(si.offset < si.send_buf.size()) continue;
-                si.interest &= ~EPOLLOUT;
-                
-                auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
-                if(!mod_ep_exp){
-                    handle_error("mod_ep failed", mod_ep_exp);
-                    unregister_fd(epfd.get(), socket_infos, fd);
-                }
-            }
+            if(event & (EPOLLIN | EPOLLRDHUP)) recv_data(fd, si, event);
+            if(event & EPOLLOUT) send_data(fd, si);
         }
     }
+}
+
+void epoll_server::accept(){
+    auto client_fd_exp = make_client_fd(listen_fd.get());
+    if(!client_fd_exp){
+        handle_error("make_client_fd failed", client_fd_exp);
+        return;
+    }
+
+    auto rcfd_exp = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
+    if(!rcfd_exp){
+        handle_error("register_client_fd failed", rcfd_exp);
+        return;
+    } 
+
+    auto ep = socket_infos[*rcfd_exp].ep;
+    std::cout << to_string(ep) << " is connected" << "\n";
+}
+
+void epoll_server::send_data(int fd, socket_info& si){
+    auto fs_exp = flush_send(fd, si);
+    if(!fs_exp){
+        handle_error("flush_send failed", fs_exp);
+        unregister_fd(epfd.get(), socket_infos, fd);
+        return; 
+    }
+                
+    if(si.offset < si.send_buf.size()) return;
+    si.interest &= ~EPOLLOUT;
+                
+    auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+    if(!mod_ep_exp){
+        handle_error("mod_ep failed", mod_ep_exp);
+        unregister_fd(epfd.get(), socket_infos, fd);
+    }
+}
+
+void epoll_server::recv_data(int fd, socket_info& si, uint32_t event){
+    auto dr_exp = drain_recv(fd, si);
+    if(!dr_exp){
+        handle_error(to_string(si.ep) + " drain_recv failed", dr_exp);
+        unregister_fd(epfd.get(), socket_infos, fd);
+        return; 
+    }
+
+    auto recv_info = *dr_exp;
+    std::cout << to_string(si.ep) << " sends " << recv_info.byte 
+        << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
+
+    si.append(si.recv_buf);
+    si.recv_buf.clear();
+
+    if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
+        handle_close(fd, si);
+        return;
+    }
+
+    if(si.interest & EPOLLOUT) return;
+    si.interest |= EPOLLOUT;
+
+    auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
+    if(!mod_ep_exp){
+        handle_error(to_string(si.ep) + " mod_ep failed", mod_ep_exp);
+        unregister_fd(epfd.get(), socket_infos, fd);
+    }
+}
+
+void epoll_server::handle_close(int fd, socket_info& si){
+    std::cout << to_string(si.ep) << " is disconnected" << "\n";
+    unregister_fd(epfd.get(), socket_infos, fd);
 }
