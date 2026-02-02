@@ -19,5 +19,6 @@ void handle_error(const std::string& msg, const error_code& ec);
 
 template<class T>
 void handle_error(const std::string& msg, const std::expected<T, error_code>& ec_exp){
+    assert(!ec_exp);
     handle_error(msg, ec_exp.error());
 }
