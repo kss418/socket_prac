@@ -13,7 +13,7 @@ std::expected <void, error_code> echo_client(int server_fd, socket_info& si){
         si.append(s);
         auto flush_send_exp = flush_send(server_fd, si);
         if(!flush_send_exp){
-            std::cerr << "send failed" << to_string(flush_send_exp.error()) << "\n";
+            handle_error("send failed", flush_send_exp);
             continue;
         }
 

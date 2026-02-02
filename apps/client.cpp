@@ -9,13 +9,13 @@
 int main(){
     auto addr_exp = get_addr_client("127.0.0.1", "8080");
     if(!addr_exp){
-        std::cerr << "get_addr_client failed: " << to_string(addr_exp.error()) << "\n";
+        handle_error("get_addr_client failed", addr_exp);
         return 1;
     }
 
     auto server_fd_exp = make_server_fd(addr_exp->get());
     if(!server_fd_exp){
-        std::cerr << "make_server_fd failed: " << to_string(server_fd_exp.error()) << "\n";
+        handle_error("make_server_fd failed", server_fd_exp);
         return 1;
     }
 
@@ -24,7 +24,7 @@ int main(){
 
     auto session_exp = echo_client(server_fd.get(), si);
     if(!session_exp){
-        std::cerr << "echo_client failed: " << to_string(session_exp.error()) << "\n";
+        handle_error("echo_client failed", session_exp);
         return 1;
     }
 

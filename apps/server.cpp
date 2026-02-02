@@ -14,20 +14,20 @@
 int main(){
     auto addr_exp = get_addr_server("8080");
     if(!addr_exp){
-        std::cerr << "get_addr_server failed: " << to_string(addr_exp.error()) << "\n";
+        handle_error("get_addr_server failed", addr_exp);
         return 1;
     }
 
     auto listen_fd_exp = make_listen_fd(addr_exp->get());
     if(!listen_fd_exp){
-        std::cerr << "make_listen_fd failed: " << to_string(listen_fd_exp.error()) << "\n";
+        handle_error("make_listen_fd failed", listen_fd_exp);
         return 1;
     }
 
     auto epfd = unique_fd{::epoll_create1(EPOLL_CLOEXEC)};
     if(!epfd){
         int ec = errno;
-        std::cerr << "epoll_create1 failed: " << std::strerror(ec) << "\n";
+        handle_error("epoll_create1 failed", error_code::from_errno(ec));
         return 1;
     }
 
@@ -35,7 +35,7 @@ int main(){
     auto listen_fd = std::move(*listen_fd_exp);
     auto rlfd_exp = register_listen_fd(epfd.get(), listen_fd.get());
     if(!rlfd_exp){
-        std::cerr << "register_fd failed: " << to_string(rlfd_exp.error()) << "\n";
+        handle_error("register_fd failed", rlfd_exp);
         return 1;
     }
 
@@ -45,7 +45,7 @@ int main(){
         if(event_sz == -1){
             int ec = errno;
             if(errno == EINTR) continue;
-            std::cerr << "event loop failed: " << std::strerror(ec) << "\n";
+            handle_error("event loop failed", error_code::from_errno(ec));
             return 1;
         }
 
@@ -66,17 +66,17 @@ int main(){
             if(fd == listen_fd.get()){ // accept socket
                 auto client_fd_exp = make_client_fd(listen_fd.get());
                 if(!client_fd_exp){
-                    std::cerr << "make_client_fd failed: " << to_string(client_fd_exp.error()) << "\n";
+                    handle_error("make_client_fd failed", client_fd_exp);
                     continue;
                 }
 
-                auto rcfd = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
-                if(!rcfd){
-                    std::cerr << "register_client_fd failed: " << to_string(rcfd.error()) << "\n";
+                auto rcfd_exp = register_client_fd(epfd.get(), socket_infos, std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
+                if(!rcfd_exp){
+                    handle_error("register_client_fd failed", rcfd_exp);
                     continue;
                 } 
 
-                auto ep = socket_infos[*rcfd].ep;
+                auto ep = socket_infos[*rcfd_exp].ep;
                 std::cout << to_string(ep) << " is connected" << "\n";
                 continue;
             }
@@ -88,7 +88,7 @@ int main(){
             if(event & (EPOLLIN | EPOLLRDHUP)){ // recv data
                 auto dr_exp = drain_recv(fd, si);
                 if(!dr_exp){
-                    std::cerr << "drain_recv failed: " << to_string(dr_exp.error()) << "\n";
+                    handle_error("drain_recv failed", dr_exp);
                     unregister_fd(epfd.get(), socket_infos, fd);
                     continue; 
                 }
@@ -111,7 +111,7 @@ int main(){
 
                 auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
                 if(!mod_ep_exp){
-                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    handle_error("mod_ep failed", mod_ep_exp);
                     unregister_fd(epfd.get(), socket_infos, fd);
                 }
             }
@@ -119,7 +119,7 @@ int main(){
             if(event & EPOLLOUT){ // send data
                 auto fs_exp = flush_send(fd, si);
                 if(!fs_exp){
-                    std::cerr << "flush_send failed: " << to_string(fs_exp.error()) << "\n";
+                    handle_error("flush_send failed", fs_exp);
                     unregister_fd(epfd.get(), socket_infos, fd);
                     continue; 
                 }
@@ -129,7 +129,7 @@ int main(){
                 
                 auto mod_ep_exp = mod_ep(epfd.get(), fd, si.interest);
                 if(!mod_ep_exp){
-                    std::cerr << "mod_ep failed: " << to_string(mod_ep_exp.error()) << "\n";
+                    handle_error("mod_ep failed", mod_ep_exp);
                     unregister_fd(epfd.get(), socket_infos, fd);
                 }
             }
