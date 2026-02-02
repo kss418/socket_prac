@@ -14,9 +14,9 @@ class epoll_server{
     unique_fd epfd;
     unique_fd listen_fd;
 
-    void accept();
-    void send_data(int fd, socket_info& si);
-    void recv_data(int fd, socket_info& si, uint32_t event);
+    void handle_accept();
+    void handle_send(int fd, socket_info& si);
+    void handle_recv(int fd, socket_info& si, uint32_t event);
     void handle_close(int fd, socket_info& si);
 public:
     epoll_server(const epoll_server&) = delete;
