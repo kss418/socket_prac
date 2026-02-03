@@ -2,6 +2,8 @@
 #include "../include/addr.hpp"
 #include "../include/epoll_utility.hpp"
 
+epoll_server::epoll_server(const char* port) : port(port){}
+
 std::expected <void, error_code> epoll_server::init(){
     auto addr_exp = get_addr_server(port);
     if(!addr_exp){
@@ -34,45 +36,20 @@ std::expected <void, error_code> epoll_server::init(){
 }
 
 std::expected <void, error_code> epoll_server::run(){
-    while(true){
-        int event_sz = ::epoll_wait(ep_registry.get_epfd(), events.data(), events.size(), -1);
-        if(event_sz == -1){
-            int ec = errno;
-            if(errno == EINTR) continue;
-            handle_error("run/event loop error", error_code::from_errno(ec));
-            return std::unexpected(error_code::from_errno(ec));
-        }
+    event_loop loop(ep_registry);
+    auto run_exp = loop.run(
+        listen_fd.get(),
+        [this](){ handle_accept(); },
+        [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
+        [this](int fd, socket_info& si){ handle_send(fd, si); },
+        [this](int fd){ ep_registry.unregister(fd); }
+    );
 
-        for(int i = 0;i < event_sz;++i){
-            int fd = events[i].data.fd;
-            uint32_t event = events[i].events;
-            
-            if(event & (EPOLLERR | EPOLLHUP)){ // error
-                if(fd == listen_fd.get()){
-                    int ec = 0;
-                    socklen_t len = sizeof(ec);
-                    if(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ec, & len) == -1) ec = errno;
-                    handle_error("run/listen fd error", error_code::from_errno(ec));
-                    return std::unexpected(error_code::from_errno(ec)); 
-                }
-
-                ep_registry.unregister(fd);
-                continue;
-            }
-
-            if(fd == listen_fd.get()){ // accept socket
-                handle_accept();
-                continue;
-            }
-
-            auto it = ep_registry.find(fd);
-            if(it == ep_registry.end()) continue;
-            auto& si = it->second;
-
-            if(event & (EPOLLIN | EPOLLRDHUP)) handle_recv(fd, si, event);
-            if(event & EPOLLOUT) handle_send(fd, si);
-        }
+    if(!run_exp){
+        handle_error("run/event loop error", run_exp);
+        return std::unexpected(run_exp.error());
     }
+    return {};
 }
 
 void epoll_server::handle_accept(){

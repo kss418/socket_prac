@@ -16,6 +16,7 @@ add_library(socket_prac
     src/chat_client.cpp
     src/epoll_registry.cpp
     src/epoll_utility.cpp
+    src/event_loop.cpp
 )
 
 target_include_directories(socket_prac PUBLIC
