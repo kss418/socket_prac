@@ -1,9 +1,8 @@
-#include "../include/ep_helper.hpp"
+#include "../include/epoll_utility.hpp"
 #include <sys/epoll.h>
 #include <fcntl.h>
-#include <cerrno>
 
-std::expected <void, error_code> set_nonblocking(int fd){
+std::expected <void, error_code> epoll_utility::set_nonblocking(int fd){
     int flags = ::fcntl(fd, F_GETFL, 0);
     if(flags == -1){
         int ec = errno;
@@ -18,9 +17,9 @@ std::expected <void, error_code> set_nonblocking(int fd){
     return {};
 }
 
-std::expected <void, error_code> add_ep(int epfd, int fd, uint32_t events){
+std::expected <void, error_code> epoll_utility::add_fd(int epfd, int fd, uint32_t interest){
     epoll_event ev{};
-    ev.events = events;
+    ev.events = interest;
     ev.data.fd = fd;
     int ec = ::epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
     if(ec == -1){
@@ -30,11 +29,8 @@ std::expected <void, error_code> add_ep(int epfd, int fd, uint32_t events){
     return {};
 }
 
-std::expected <void, error_code> mod_ep(int epfd, int fd, uint32_t events){
-    epoll_event ev{};
-    ev.events = events;
-    ev.data.fd = fd;
-    int ec = ::epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+std::expected <void, error_code> epoll_utility::del_fd(int epfd, int fd){
+    int ec = ::epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
     if(ec == -1){
         int ec = errno;
         return std::unexpected(error_code::from_errno(ec));
@@ -42,8 +38,12 @@ std::expected <void, error_code> mod_ep(int epfd, int fd, uint32_t events){
     return {};
 }
 
-std::expected <void, error_code> del_ep(int epfd, int fd){
-    int ec = ::epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
+std::expected <void, error_code> epoll_utility::update_interest(int epfd, int fd, socket_info& si, uint32_t interest){
+    si.interest = interest;
+    epoll_event ev{};
+    ev.events = interest;
+    ev.data.fd = fd;
+    int ec = ::epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
     if(ec == -1){
         int ec = errno;
         return std::unexpected(error_code::from_errno(ec));

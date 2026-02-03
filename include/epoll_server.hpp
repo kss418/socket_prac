@@ -4,14 +4,14 @@
 #include <unordered_map>
 #include "../include/error_code.hpp"
 #include "../include/io_helper.hpp"
+#include "../include/epoll_registry.hpp"
 
 constexpr int EP_SIZE = 128;
 
 class epoll_server{
-    std::unordered_map <int, socket_info> socket_infos;
+    epoll_registry ep_registry;
     std::array <epoll_event, EP_SIZE> events;
     const char* port;
-    unique_fd epfd;
     unique_fd listen_fd;
 
     void handle_accept();
