@@ -11,10 +11,10 @@ add_library(socket_prac
     src/error_code.cpp
     src/fd_helper.cpp
     src/unique_fd.cpp
-    src/ep_helper.cpp
     src/io_helper.cpp
     src/epoll_server.cpp
     src/chat_client.cpp
+    src/epoll_registry.cpp
 )
 
 target_include_directories(socket_prac PUBLIC
