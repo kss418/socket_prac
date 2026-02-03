@@ -128,3 +128,7 @@ std::expected <void, error_code> epoll_registry::del_fd(int fd){
     }
     return {};
 }
+
+epoll_registry::socket_info_it epoll_registry::find(int fd){ return infos.find(fd); }
+epoll_registry::socket_info_it epoll_registry::end(){ return infos.end(); }
+int epoll_registry::get_epfd() const{ return epfd.get(); }
