@@ -65,11 +65,11 @@ std::expected <int, error_code> epoll_registry::register_listener(int fd){
         handle_error("register_client/add_fd failed", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
     }
-    return {};
+    return fd;
 }
 
 std::expected <void, error_code> epoll_registry::unregister(int fd){
-     if(fd == -1){
+    if(fd == -1){
         handle_error("unregister/fd error", error_code::from_errno(EINVAL));
         return std::unexpected(error_code::from_errno(EINVAL));
     }
@@ -82,6 +82,12 @@ std::expected <void, error_code> epoll_registry::unregister(int fd){
 }
     
 std::expected <void, error_code> epoll_registry::update_interest(int fd, uint32_t interest){
+    if(fd == -1){
+        handle_error("update_interest/fd error", error_code::from_errno(EINVAL));
+        return std::unexpected(error_code::from_errno(EINVAL));
+    }
+
+    infos[fd].interest = interest;
     epoll_event ev{};
     ev.events = interest;
     ev.data.fd = fd;
