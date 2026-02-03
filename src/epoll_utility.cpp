@@ -42,6 +42,7 @@ std::expected <void, error_code> epoll_utility::update_interest(int epfd, int fd
     si.interest = interest;
     epoll_event ev{};
     ev.events = interest;
+    ev.data.fd = fd;
     int ec = ::epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
     if(ec == -1){
         int ec = errno;
