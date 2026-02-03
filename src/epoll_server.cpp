@@ -1,5 +1,6 @@
 #include "../include/epoll_server.hpp"
 #include "../include/addr.hpp"
+#include "../include/epoll_utility.hpp"
 
 std::expected <void, error_code> epoll_server::init(){
     auto addr_exp = get_addr_server(port);
@@ -102,7 +103,7 @@ void epoll_server::handle_send(int fd, socket_info& si){
     if(si.offset < si.send_buf.size()) return;
     si.interest &= ~EPOLLOUT;
                 
-    auto mod_ep_exp = ep_registry.update_interest(fd, si.interest);
+    auto mod_ep_exp = epoll_utility::update_interest(ep_registry.get_epfd(), fd, si, si.interest);
     if(!mod_ep_exp) ep_registry.unregister(fd);
 }
 
@@ -129,7 +130,7 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     if(si.interest & EPOLLOUT) return;
     si.interest |= EPOLLOUT;
 
-    auto mod_ep_exp = ep_registry.update_interest(fd, si.interest);
+    auto mod_ep_exp = epoll_utility::update_interest(ep_registry.get_epfd(), fd, si, si.interest);
     if(!mod_ep_exp) ep_registry.unregister(fd);
 }
 

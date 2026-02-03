@@ -1,4 +1,5 @@
 #include "../include/epoll_registry.hpp"
+#include "../include/epoll_utility.hpp"
 #include <sys/epoll.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -15,7 +16,7 @@ std::expected <int, error_code> epoll_registry::register_client(unique_fd client
         return std::unexpected(error_code::from_errno(EEXIST));
     }
 
-    auto nonblocking_exp = set_nonblocking(fd);
+    auto nonblocking_exp = epoll_utility::set_nonblocking(fd);
     if(!nonblocking_exp){
         handle_error("register_client/set_nonblocking failed", nonblocking_exp);
         return std::unexpected(nonblocking_exp.error());
@@ -33,7 +34,7 @@ std::expected <int, error_code> epoll_registry::register_client(unique_fd client
         return std::unexpected(init_str_exp.error());
     }
 
-    auto add_ep_exp = add_fd(fd, interest);
+    auto add_ep_exp = epoll_utility::add_fd(epfd.get(), fd, interest);
     if(!add_ep_exp){
         handle_error("register_client/add_fd failed", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
@@ -54,13 +55,13 @@ std::expected <int, error_code> epoll_registry::register_listener(int fd){
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
-    auto nonblocking_exp = set_nonblocking(fd);
+    auto nonblocking_exp = epoll_utility::set_nonblocking(fd);
     if(!nonblocking_exp){
         handle_error("register_listener/set_nonblocking failed", nonblocking_exp);
         return std::unexpected(nonblocking_exp.error());
     }
 
-    auto add_ep_exp = add_fd(fd, EPOLLIN);
+    auto add_ep_exp = epoll_utility::add_fd(epfd.get(), fd, EPOLLIN);
     if(!add_ep_exp){
         handle_error("register_client/add_fd failed", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
@@ -74,64 +75,10 @@ std::expected <void, error_code> epoll_registry::unregister(int fd){
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
-    auto del_ep_exp = del_fd(fd);
+    auto del_ep_exp = epoll_utility::del_fd(epfd.get(), fd);
     if(!del_ep_exp) handle_error("unregister/del_ep failed", del_ep_exp);
 
     if(infos.contains(fd)) infos.erase(fd);
-    return {};
-}
-    
-std::expected <void, error_code> epoll_registry::update_interest(int fd, uint32_t interest){
-    if(fd == -1){
-        handle_error("update_interest/fd error", error_code::from_errno(EINVAL));
-        return std::unexpected(error_code::from_errno(EINVAL));
-    }
-
-    infos[fd].interest = interest;
-    epoll_event ev{};
-    ev.events = interest;
-    ev.data.fd = fd;
-    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_MOD, fd, &ev);
-    if(ec == -1){
-        int ec = errno;
-        return std::unexpected(error_code::from_errno(ec));
-    }
-    return {};
-}
-
-std::expected <void, error_code> epoll_registry::set_nonblocking(int fd){
-    int flags = ::fcntl(fd, F_GETFL, 0);
-    if(flags == -1){
-        int ec = errno;
-        return std::unexpected(error_code::from_errno(ec));
-    }
-
-    int ec = ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    if(ec == -1){
-        int ec = errno;
-        return std::unexpected(error_code::from_errno(ec));
-    }
-    return {};
-}
-
-std::expected <void, error_code> epoll_registry::add_fd(int fd, uint32_t interest){
-    epoll_event ev{};
-    ev.events = interest;
-    ev.data.fd = fd;
-    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_ADD, fd, &ev);
-    if(ec == -1){
-        int en = errno;
-        return std::unexpected(error_code::from_errno(en));
-    }
-    return {};
-}
-
-std::expected <void, error_code> epoll_registry::del_fd(int fd){
-    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_DEL, fd, nullptr);
-    if(ec == -1){
-        int ec = errno;
-        return std::unexpected(error_code::from_errno(ec));
-    }
     return {};
 }
 
