@@ -60,7 +60,7 @@ std::expected <int, error_code> epoll_registry::register_listener(int fd){
         return std::unexpected(nonblocking_exp.error());
     }
 
-    auto add_ep_exp = add_ep(epfd, fd, EPOLLIN);
+    auto add_ep_exp = add_fd(fd, EPOLLIN);
     if(!add_ep_exp){
         handle_error("register_client/add_fd failed", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
@@ -74,7 +74,7 @@ std::expected <void, error_code> epoll_registry::unregister(int fd){
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
-    auto del_ep_exp = del_ep(epfd, fd);
+    auto del_ep_exp = del_fd(fd);
     if(!del_ep_exp) handle_error("unregister/del_ep failed", del_ep_exp);
 
     if(infos.contains(fd)) infos.erase(fd);
@@ -85,7 +85,7 @@ std::expected <void, error_code> epoll_registry::update_interest(int fd, uint32_
     epoll_event ev{};
     ev.events = interest;
     ev.data.fd = fd;
-    int ec = ::epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_MOD, fd, &ev);
     if(ec == -1){
         int ec = errno;
         return std::unexpected(error_code::from_errno(ec));
@@ -112,7 +112,7 @@ std::expected <void, error_code> epoll_registry::add_fd(int fd, uint32_t interes
     epoll_event ev{};
     ev.events = interest;
     ev.data.fd = fd;
-    int ec = ::epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_ADD, fd, &ev);
     if(ec == -1){
         int en = errno;
         return std::unexpected(error_code::from_errno(en));
@@ -121,7 +121,7 @@ std::expected <void, error_code> epoll_registry::add_fd(int fd, uint32_t interes
 }
 
 std::expected <void, error_code> epoll_registry::del_fd(int fd){
-    int ec = ::epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
+    int ec = ::epoll_ctl(epfd.get(), EPOLL_CTL_DEL, fd, nullptr);
     if(ec == -1){
         int ec = errno;
         return std::unexpected(error_code::from_errno(ec));

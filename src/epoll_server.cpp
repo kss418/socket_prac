@@ -1,6 +1,5 @@
 #include "../include/epoll_server.hpp"
 #include "../include/addr.hpp"
-#include "../include/ep_helper.hpp"
 
 std::expected <void, error_code> epoll_server::init(){
     auto addr_exp = get_addr_server(port);
@@ -23,7 +22,7 @@ std::expected <void, error_code> epoll_server::init(){
     }
 
     listen_fd = std::move(*listen_fd_exp);
-    auto rlfd_exp = register_listen_fd(epfd.get(), listen_fd.get());
+    auto rlfd_exp = ep_registry.register_listener(listen_fd.get());
     if(!rlfd_exp){
         handle_error("init/register_listen_fd failed", rlfd_exp);
         return std::unexpected(rlfd_exp.error());

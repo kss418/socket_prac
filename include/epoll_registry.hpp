@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 class epoll_registry{
-    int epfd;
+    unique_fd epfd;
     std::unordered_map <int, socket_info> infos;
     std::expected <void, error_code> set_nonblocking(int fd);
     std::expected <void, error_code> add_fd(int fd, uint32_t interest);
@@ -17,7 +17,7 @@ public:
     epoll_registry(epoll_registry&& other) noexcept = default;
     epoll_registry& operator=(epoll_registry&& other) noexcept = default;
 
-    epoll_registry(int epfd) : epfd(epfd){}
+    epoll_registry(unique_fd epfd) : epfd(std::move(epfd)){}
     std::expected <int, error_code> register_client(unique_fd client_fd, uint32_t interest);
     std::expected <int, error_code> register_listener(int fd);
     std::expected <void, error_code> unregister(int fd);

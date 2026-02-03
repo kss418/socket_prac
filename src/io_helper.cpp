@@ -1,5 +1,4 @@
 #include "../include/io_helper.hpp"
-#include "../include/ep_helper.hpp"
 #include "../include/fd_helper.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
@@ -85,15 +84,3 @@ void flush_recv(std::string& recv_buf){
         recv_buf.erase(0, pos + 1);
     }
 }
-
-std::expected <void, error_code> register_listen_fd(int epfd, int fd){
-    if(fd == -1) return std::unexpected(error_code::from_errno(EINVAL));
-
-    auto nonblocking_exp = set_nonblocking(fd);
-    if(!nonblocking_exp) return std::unexpected(nonblocking_exp.error());
-
-    auto add_ep_exp = add_ep(epfd, fd, EPOLLIN);
-    if(!add_ep_exp) return std::unexpected(add_ep_exp.error());
-    return {};
-}
-
