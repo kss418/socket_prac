@@ -4,10 +4,12 @@
 #include "../include/epoll_registry.hpp"
 #include "../include/event_loop.hpp"
 #include "../include/epoll_listener.hpp"
+#include "../include/epoll_acceptor.hpp"
 
 class epoll_server{
     epoll_registry ep_registry;
     epoll_listener listener;
+    epoll_acceptor acceptor;
     const char* port;
 
     void handle_accept(int listen_fd);

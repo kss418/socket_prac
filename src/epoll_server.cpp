@@ -26,6 +26,7 @@ std::expected <void, error_code> epoll_server::init(){
 
     ep_registry = {std::move(epfd)};
     listener = std::move(*listen_fd_exp);
+    acceptor(listener, ep_registry);
 
     return {};
 }
