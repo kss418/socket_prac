@@ -11,9 +11,9 @@ std::expected <void, error_code> epoll_server::init(){
         return std::unexpected(addr_exp.error());
     }
 
-    auto listen_fd_exp = make_listen_fd(addr_exp->get());
+    auto listen_fd_exp = epoll_listener::make_listener(addr_exp->get());
     if(!listen_fd_exp){
-        handle_error("init/make_listen_fd failed", listen_fd_exp);
+        handle_error("init/make_listener failed", listen_fd_exp);
         return std::unexpected(listen_fd_exp.error());
     }
 
@@ -25,12 +25,7 @@ std::expected <void, error_code> epoll_server::init(){
     }
 
     ep_registry = {std::move(epfd)};
-    listen_fd = std::move(*listen_fd_exp);
-    auto rlfd_exp = ep_registry.register_listener(listen_fd.get());
-    if(!rlfd_exp){
-        handle_error("init/register_listen_fd failed", rlfd_exp);
-        return std::unexpected(rlfd_exp.error());
-    }
+    listener = std::move(*listen_fd_exp);
 
     return {};
 }
@@ -38,8 +33,6 @@ std::expected <void, error_code> epoll_server::init(){
 std::expected <void, error_code> epoll_server::run(){
     event_loop loop(ep_registry);
     auto run_exp = loop.run(
-        listen_fd.get(),
-        [this](){ handle_accept(); },
         [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
         [this](int fd, socket_info& si){ handle_send(fd, si); },
         [this](int fd){ ep_registry.unregister(fd); }
@@ -52,8 +45,8 @@ std::expected <void, error_code> epoll_server::run(){
     return {};
 }
 
-void epoll_server::handle_accept(){
-    auto client_fd_exp = make_client_fd(listen_fd.get());
+void epoll_server::handle_accept(int listen_fd){
+    auto client_fd_exp = make_client_fd(listen_fd);
     if(!client_fd_exp){
         handle_error("run/handle_accept/make_client_fd failed", client_fd_exp);
         return;

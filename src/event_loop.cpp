@@ -5,8 +5,6 @@
 event_loop::event_loop(epoll_registry& registry) : registry(registry){}
 
 std::expected<void, error_code> event_loop::run(
-    int listen_fd,
-    const std::function<void()>& on_accept,
     const std::function<void(int, socket_info&, uint32_t)>& on_recv,
     const std::function<void(int, socket_info&)>& on_send,
     const std::function<void(int)>& on_client_error
@@ -24,19 +22,7 @@ std::expected<void, error_code> event_loop::run(
             uint32_t event = events[i].events;
 
             if(event & (EPOLLERR | EPOLLHUP)){
-                if(fd == listen_fd){
-                    int ec = 0;
-                    socklen_t len = sizeof(ec);
-                    if(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ec, &len) == -1) ec = errno;
-                    return std::unexpected(error_code::from_errno(ec));
-                }
-
                 on_client_error(fd);
-                continue;
-            }
-
-            if(fd == listen_fd){
-                on_accept();
                 continue;
             }
 

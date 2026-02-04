@@ -13,8 +13,6 @@ class event_loop{
 public:
     explicit event_loop(epoll_registry& registry);
     std::expected<void, error_code> run(
-        int listen_fd,
-        const std::function<void()>& on_accept,
         const std::function<void(int, socket_info&, uint32_t)>& on_recv,
         const std::function<void(int, socket_info&)>& on_send,
         const std::function<void(int)>& on_client_error
