@@ -1,6 +1,9 @@
 #include "../include/epoll_listener.hpp"
 #include <sys/epoll.h>
 
+epoll_listener::epoll_listener(unique_fd epfd, unique_fd listen_fd) :
+    epfd(std::move(epfd)), listen_fd(std::move(listen_fd)){}
+
 std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinfo* head){
     int ec = 0;
     for(addrinfo* p = head; p; p = p->ai_next){

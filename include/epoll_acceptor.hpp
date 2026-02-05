@@ -5,6 +5,7 @@
 #include "../include/epoll_registry.hpp"
 #include "../include/constant.hpp"
 #include <array>
+#include <sys/epoll.h>
 
 class epoll_acceptor{
     epoll_listener& listener;
@@ -19,7 +20,6 @@ public:
     epoll_acceptor(epoll_acceptor&&) noexcept = default;
     epoll_acceptor& operator=(epoll_acceptor&&) noexcept = default;
 
-    epoll_acceptor() = default;
     epoll_acceptor(epoll_listener& listener, epoll_registry& registry);
     std::expected <void, error_code> run();
 };

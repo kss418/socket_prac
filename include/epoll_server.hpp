@@ -7,12 +7,10 @@
 #include "../include/epoll_acceptor.hpp"
 
 class epoll_server{
-    epoll_registry ep_registry;
+    epoll_registry registry;
     epoll_listener listener;
     epoll_acceptor acceptor;
-    const char* port;
 
-    void handle_accept(int listen_fd);
     void handle_send(int fd, socket_info& si);
     void handle_recv(int fd, socket_info& si, uint32_t event);
     void handle_close(int fd, socket_info& si);
@@ -23,7 +21,6 @@ public:
     epoll_server(epoll_server&& other) noexcept = default;
     epoll_server& operator=(epoll_server&& other) noexcept = default;
 
-    epoll_server(const char* port = "8080");
-    std::expected <void, error_code> init();
+    epoll_server(epoll_registry registry, epoll_listener listener, epoll_acceptor acceptor);
     std::expected <void, error_code> run();
 };
