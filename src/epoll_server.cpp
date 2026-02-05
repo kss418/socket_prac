@@ -4,11 +4,12 @@
 #include <thread>
 
 epoll_server::epoll_server(
-    epoll_registry registry, epoll_listener listener, epoll_acceptor acceptor
-) : registry(std::move(registry)), listener(std::move(listener)), acceptor(std::move(acceptor)){}
+    epoll_registry registry, epoll_listener listener
+) : registry(std::move(registry)), listener(std::move(listener)){}
 
 std::expected <void, error_code> epoll_server::run(){
     std::jthread accept_thread([this](std::stop_token st){
+        epoll_acceptor acceptor(listener, registry);
         auto accept_exp = acceptor.run(st);
         if(!accept_exp) handle_error("acceptor thread error", accept_exp);
     });

@@ -23,8 +23,7 @@ std::expected <epoll_server, error_code> server_factory::create_server(const cha
         return std::unexpected(error_code::from_errno(ec));
     }
 
-    epoll_registry ep_registry = {std::move(epfd)};
+    epoll_registry registry = {std::move(epfd)};
     epoll_listener listener = std::move(*listen_fd_exp);
-    epoll_acceptor acceptor(listener, ep_registry);
-    return epoll_server(std::move(ep_registry), std::move(listener), std::move(acceptor));
+    return epoll_server(std::move(registry), std::move(listener));
 }

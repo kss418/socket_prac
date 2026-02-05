@@ -46,6 +46,7 @@ std::expected <int, error_code> epoll_registry::register_client(unique_fd client
     si.interest = interest;
 
     infos.emplace(fd, std::move(si));
+    std::cout << to_string(si.ep) << " is connected" << "\n";
     return fd;
 }
 

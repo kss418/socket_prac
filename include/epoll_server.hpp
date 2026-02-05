@@ -9,7 +9,6 @@
 class epoll_server{
     epoll_registry registry;
     epoll_listener listener;
-    epoll_acceptor acceptor;
 
     void handle_send(int fd, socket_info& si);
     void handle_recv(int fd, socket_info& si, uint32_t event);
@@ -21,6 +20,6 @@ public:
     epoll_server(epoll_server&& other) noexcept = default;
     epoll_server& operator=(epoll_server&& other) noexcept = default;
 
-    epoll_server(epoll_registry registry, epoll_listener listener, epoll_acceptor acceptor);
+    epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
 };

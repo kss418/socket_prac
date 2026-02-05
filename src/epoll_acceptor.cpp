@@ -17,9 +17,6 @@ void epoll_acceptor::handle_accept(){
         handle_error("run/handle_accept/register_client_fd failed", rcfd_exp);
         return;
     } 
-
-    auto ep = (registry.find(*rcfd_exp)->second).ep;
-    std::cout << to_string(ep) << " is connected" << "\n";
 }
 
 std::expected <unique_fd, error_code> epoll_acceptor::make_client_fd(){
