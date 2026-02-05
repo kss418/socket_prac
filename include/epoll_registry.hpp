@@ -7,6 +7,7 @@
 
 class epoll_registry{
     unique_fd epfd;
+    unique_fd evfd;
     std::queue <std::pair<unique_fd, uint32_t>> reg_q;
     std::queue <int> unreg_q;
     std::unordered_map <int, socket_info> infos;
@@ -22,7 +23,7 @@ public:
     epoll_registry& operator=(epoll_registry&& other) noexcept = default;
 
     epoll_registry() = default;
-    epoll_registry(unique_fd epfd) : epfd(std::move(epfd)){}
+    epoll_registry(unique_fd epfd, unique_fd evfd) : epfd(std::move(epfd)), evfd(std::move(evfd)){}
 
     void request_register(unique_fd fd, uint32_t interest);
     void request_unregister(int fd);
@@ -31,4 +32,5 @@ public:
     socket_info_it find(int fd);
     socket_info_it end();
     int get_epfd() const;
+    int get_evfd() const;
 };

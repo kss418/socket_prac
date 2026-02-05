@@ -63,8 +63,25 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
     return {};
 }
 
-void epoll_registry::request_register(unique_fd fd, uint32_t interest){ reg_q.push({std::move(fd), interest}); }
-void epoll_registry::request_unregister(int fd){ unreg_q.push(fd); }
+void epoll_registry::request_register(unique_fd fd, uint32_t interest){ 
+    reg_q.push({std::move(fd), interest});
+    uint64_t v = 1;
+    ssize_t n = ::write(evfd.get(), &v, sizeof(v));
+    if(n == -1){
+        int ec = errno;
+        handle_error("request_rgister/write failed", error_code::from_errno(ec));
+    }
+}
+
+void epoll_registry::request_unregister(int fd){ 
+    unreg_q.push(fd); 
+    uint64_t v = 1;
+    ssize_t n = ::write(evfd.get(), &v, sizeof(v));
+    if(n == -1){
+        int ec = errno;
+        handle_error("request_rgister/write failed", error_code::from_errno(ec));
+    }
+}
 
 void epoll_registry::work(){
     while(!reg_q.empty()){
@@ -72,12 +89,27 @@ void epoll_registry::work(){
         uint32_t interest = reg_q.front().second;
         reg_q.pop();
 
+        uint64_t v = 0;
+        ssize_t n = ::write(evfd.get(), &v, sizeof(v));
+        if(n == -1){
+            int ec = errno;
+            handle_error("request_rgister/write failed", error_code::from_errno(ec));
+        }
+
         auto reg_exp = register_fd(std::move(fd), interest);
         if(!reg_exp) handle_error("epoll_registry/register_fd failed", reg_exp);
     }
 
     while(!unreg_q.empty()){
         int fd = unreg_q.front(); unreg_q.pop();
+
+        uint64_t v = 0;
+        ssize_t n = ::write(evfd.get(), &v, sizeof(v));
+        if(n == -1){
+            int ec = errno;
+            handle_error("request_rgister/write failed", error_code::from_errno(ec));
+        }
+
         auto unreg_exp = unregister_fd(fd);
         if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
     }
@@ -86,3 +118,4 @@ void epoll_registry::work(){
 epoll_registry::socket_info_it epoll_registry::find(int fd){ return infos.find(fd); }
 epoll_registry::socket_info_it epoll_registry::end(){ return infos.end(); }
 int epoll_registry::get_epfd() const{ return epfd.get(); }
+int epoll_registry::get_evfd() const{ return evfd.get(); }
