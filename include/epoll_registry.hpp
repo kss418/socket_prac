@@ -14,6 +14,7 @@ class epoll_registry{
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);
     std::expected <void, error_code> unregister_fd(int fd);
+    void consume_wakeup();
 public:
     using socket_info_it = std::unordered_map<int, socket_info>::iterator;
     epoll_registry(const epoll_registry&) = delete;
