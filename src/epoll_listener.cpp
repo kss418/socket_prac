@@ -1,0 +1,51 @@
+#include "../include/epoll_listener.hpp"
+#include "../include/epoll_utility.hpp"
+#include <sys/epoll.h>
+
+epoll_listener::epoll_listener(unique_fd epfd, unique_fd listen_fd) :
+    epfd(std::move(epfd)), listen_fd(std::move(listen_fd)){}
+
+std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinfo* head){
+    int ec = 0;
+    for(addrinfo* p = head; p; p = p->ai_next){
+        unique_fd fd(::socket(p->ai_family, p->ai_socktype, p->ai_protocol));
+        if(!fd){ ec = errno; continue; }
+
+        int use = 1;
+        if(::setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR, &use, sizeof(use)) == -1){
+            ec = errno;
+            continue;
+        }
+
+        if(::bind(fd.get(), p->ai_addr, p->ai_addrlen) == 0){
+            if(::listen(fd.get(), SOMAXCONN) == 0){
+                int epfd = ::epoll_create1(EPOLL_CLOEXEC);
+                if(epfd == -1){
+                    int ec = errno;
+                    handle_error("make_listener/epoll_create1 failed", error_code::from_errno(ec));
+                    return std::unexpected(error_code::from_errno(ec));
+                }
+
+                auto add_exp = epoll_utility::add_fd(epfd, fd.get(), EPOLLIN);
+                if(!add_exp){
+                    handle_error("make_listener/add_fd failed", add_exp);
+                    return std::unexpected(add_exp.error());
+                }
+
+                return epoll_listener{
+                    unique_fd{epfd}, unique_fd(std::move(fd))
+                };
+            }
+            ec = errno;
+            return std::unexpected(error_code::from_errno(ec));
+        }
+
+        ec = errno;
+    }
+
+    if(ec == 0) ec = EINVAL;
+    return std::unexpected(error_code::from_errno(ec));
+}
+
+int epoll_listener::get_fd() const{ return listen_fd.get(); }
+int epoll_listener::get_epfd() const{ return epfd.get(); }
