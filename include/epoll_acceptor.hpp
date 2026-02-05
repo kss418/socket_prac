@@ -5,6 +5,7 @@
 #include "../include/epoll_registry.hpp"
 #include "../include/constant.hpp"
 #include <array>
+#include <stop_token>
 #include <sys/epoll.h>
 
 class epoll_acceptor{
@@ -21,5 +22,5 @@ public:
     epoll_acceptor& operator=(epoll_acceptor&&) noexcept = default;
 
     epoll_acceptor(epoll_listener& listener, epoll_registry& registry);
-    std::expected <void, error_code> run();
+    std::expected <void, error_code> run(const std::stop_token& stop_token);
 };

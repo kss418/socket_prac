@@ -1,5 +1,6 @@
 #include "../include/epoll_acceptor.hpp"
 #include <sys/epoll.h>
+#include <cerrno>
 
 epoll_acceptor::epoll_acceptor(epoll_listener& listener, epoll_registry& registry) : 
     listener(listener), registry(registry){};
@@ -32,8 +33,8 @@ std::expected <unique_fd, error_code> epoll_acceptor::make_client_fd(){
     }
 }
 
-std::expected <void, error_code> epoll_acceptor::run(){
-    while(true){
+std::expected <void, error_code> epoll_acceptor::run(const std::stop_token& stop_token){
+    while(!stop_token.stop_requested()){
         int event_sz = ::epoll_wait(listener.get_epfd(), events.data(), events.size(), -1);
         if(event_sz == -1){
             int ec = errno;
@@ -55,4 +56,6 @@ std::expected <void, error_code> epoll_acceptor::run(){
             handle_accept();
         }
     }
+
+    return {};
 }

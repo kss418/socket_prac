@@ -1,4 +1,5 @@
 #include "../include/epoll_listener.hpp"
+#include "../include/epoll_utility.hpp"
 #include <sys/epoll.h>
 
 epoll_listener::epoll_listener(unique_fd epfd, unique_fd listen_fd) :
@@ -23,6 +24,12 @@ std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinf
                     int ec = errno;
                     handle_error("make_listener/epoll_create1 failed", error_code::from_errno(ec));
                     return std::unexpected(error_code::from_errno(ec));
+                }
+
+                auto add_exp = epoll_utility::add_fd(epfd, fd.get(), EPOLLIN);
+                if(!add_exp){
+                    handle_error("make_listener/add_fd failed", add_exp);
+                    return std::unexpected(add_exp.error());
                 }
 
                 return epoll_listener{

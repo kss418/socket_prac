@@ -1,12 +1,18 @@
 #include "../include/epoll_server.hpp"
 #include "../include/addr.hpp"
 #include "../include/epoll_utility.hpp"
+#include <thread>
 
 epoll_server::epoll_server(
     epoll_registry registry, epoll_listener listener, epoll_acceptor acceptor
 ) : registry(std::move(registry)), listener(std::move(listener)), acceptor(std::move(acceptor)){}
 
 std::expected <void, error_code> epoll_server::run(){
+    std::jthread accept_thread([this](std::stop_token st){
+        auto accept_exp = acceptor.run(st);
+        if(!accept_exp) handle_error("acceptor thread error", accept_exp);
+    });
+
     event_loop loop(registry);
     auto run_exp = loop.run(
         [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
@@ -16,8 +22,11 @@ std::expected <void, error_code> epoll_server::run(){
 
     if(!run_exp){
         handle_error("run/event loop error", run_exp);
+        accept_thread.request_stop();
         return std::unexpected(run_exp.error());
     }
+
+    accept_thread.request_stop();
     return {};
 }
 
