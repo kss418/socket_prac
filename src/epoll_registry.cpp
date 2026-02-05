@@ -81,7 +81,7 @@ void epoll_registry::request_unregister(int fd){
     if(n == -1){
         int ec = errno;
         if(ec == EAGAIN) return;
-        handle_error("request_register/write failed", error_code::from_errno(ec));
+        handle_error("request_unregister/write failed", error_code::from_errno(ec));
     }
 }
 
