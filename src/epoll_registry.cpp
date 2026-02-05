@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-std::expected <int, error_code> epoll_registry::register_client(unique_fd client_fd, uint32_t interest){
+std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd, uint32_t interest){
     int fd = client_fd.get();
     if(fd == -1){
         handle_error("register_client/fd error", error_code::from_errno(EINVAL));
@@ -50,27 +50,7 @@ std::expected <int, error_code> epoll_registry::register_client(unique_fd client
     return fd;
 }
 
-std::expected <int, error_code> epoll_registry::register_listener(int fd){
-    if(fd == -1){
-        handle_error("register_listener/fd error", error_code::from_errno(EINVAL));
-        return std::unexpected(error_code::from_errno(EINVAL));
-    }
-
-    auto nonblocking_exp = epoll_utility::set_nonblocking(fd);
-    if(!nonblocking_exp){
-        handle_error("register_listener/set_nonblocking failed", nonblocking_exp);
-        return std::unexpected(nonblocking_exp.error());
-    }
-
-    auto add_ep_exp = epoll_utility::add_fd(epfd.get(), fd, EPOLLIN);
-    if(!add_ep_exp){
-        handle_error("register_client/add_fd failed", add_ep_exp);
-        return std::unexpected(add_ep_exp.error());
-    }
-    return fd;
-}
-
-std::expected <void, error_code> epoll_registry::unregister(int fd){
+std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
     if(fd == -1){
         handle_error("unregister/fd error", error_code::from_errno(EINVAL));
         return std::unexpected(error_code::from_errno(EINVAL));
@@ -81,6 +61,26 @@ std::expected <void, error_code> epoll_registry::unregister(int fd){
 
     if(infos.contains(fd)) infos.erase(fd);
     return {};
+}
+
+void epoll_registry::request_register(unique_fd fd, uint32_t interest){ reg_q.push({std::move(fd), interest}); }
+void epoll_registry::request_unregister(int fd){ unreg_q.push(fd); }
+
+void epoll_registry::work(){
+    while(!reg_q.empty()){
+        unique_fd fd = std::move(reg_q.front().first);
+        uint32_t interest = reg_q.front().second;
+        reg_q.pop();
+
+        auto reg_exp = register_fd(std::move(fd), interest);
+        if(!reg_exp) handle_error("epoll_registry/register_fd failed", reg_exp);
+    }
+
+    while(!unreg_q.empty()){
+        int fd = unreg_q.front(); unreg_q.pop();
+        auto unreg_exp = unregister_fd(fd);
+        if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
+    }
 }
 
 epoll_registry::socket_info_it epoll_registry::find(int fd){ return infos.find(fd); }

@@ -12,11 +12,7 @@ void epoll_acceptor::handle_accept(){
         return;
     }
 
-    auto rcfd_exp = registry.register_client(std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
-    if(!rcfd_exp){
-        handle_error("run/handle_accept/register_client_fd failed", rcfd_exp);
-        return;
-    } 
+    registry.request_register(std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
 }
 
 std::expected <unique_fd, error_code> epoll_acceptor::make_client_fd(){

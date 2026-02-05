@@ -17,6 +17,7 @@ std::expected<void, error_code> event_loop::run(
             return std::unexpected(error_code::from_errno(ec));
         }
 
+        registry.work();
         for(int i = 0;i < event_sz;++i){
             int fd = events[i].data.fd;
             uint32_t event = events[i].events;
