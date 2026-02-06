@@ -1,8 +1,8 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/reactor/epoll_wakeup.hpp"
-#include "socket_prac/net/io_helper.hpp"
-#include "socket_prac/core/unique_fd.hpp"
+#include "core/error_code.hpp"
+#include "reactor/epoll_wakeup.hpp"
+#include "net/io_helper.hpp"
+#include "core/unique_fd.hpp"
 #include <unordered_map>
 #include <queue>
 #include <mutex>

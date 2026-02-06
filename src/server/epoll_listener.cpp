@@ -1,5 +1,5 @@
-#include "socket_prac/server/epoll_listener.hpp"
-#include "socket_prac/reactor/epoll_utility.hpp"
+#include "server/epoll_listener.hpp"
+#include "reactor/epoll_utility.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
 

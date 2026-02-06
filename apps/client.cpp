@@ -1,4 +1,4 @@
-#include "socket_prac/client/chat_client.hpp"
+#include "client/chat_client.hpp"
 
 int main(){
     chat_client client;

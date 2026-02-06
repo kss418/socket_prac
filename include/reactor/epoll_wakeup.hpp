@@ -1,6 +1,6 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/core/unique_fd.hpp"
+#include "core/error_code.hpp"
+#include "core/unique_fd.hpp"
 
 class epoll_wakeup{
 protected:

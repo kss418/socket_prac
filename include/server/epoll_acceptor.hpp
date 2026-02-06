@@ -1,9 +1,9 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/core/unique_fd.hpp"
-#include "socket_prac/server/epoll_listener.hpp"
-#include "socket_prac/reactor/epoll_registry.hpp"
-#include "socket_prac/core/constant.hpp"
+#include "core/error_code.hpp"
+#include "core/unique_fd.hpp"
+#include "server/epoll_listener.hpp"
+#include "reactor/epoll_registry.hpp"
+#include "core/constant.hpp"
 #include <array>
 #include <stop_token>
 #include <sys/epoll.h>

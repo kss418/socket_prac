@@ -1,7 +1,7 @@
 #pragma once
-#include "socket_prac/reactor/epoll_registry.hpp"
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/core/constant.hpp"
+#include "reactor/epoll_registry.hpp"
+#include "core/error_code.hpp"
+#include "core/constant.hpp"
 #include <array>
 #include <functional>
 #include <stop_token>

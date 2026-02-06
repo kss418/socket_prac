@@ -1,5 +1,5 @@
-#include "socket_prac/client/chat_client.hpp"
-#include "socket_prac/net/addr.hpp"
+#include "client/chat_client.hpp"
+#include "net/addr.hpp"
 
 std::expected <void, error_code> chat_client::connect(const char* ip, const char* port){
     auto addr_exp = get_addr_client(ip, port);

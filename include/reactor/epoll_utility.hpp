@@ -1,6 +1,6 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/net/io_helper.hpp"
+#include "core/error_code.hpp"
+#include "net/io_helper.hpp"
 
 namespace epoll_utility{
     std::expected <void, error_code> set_nonblocking(int fd);

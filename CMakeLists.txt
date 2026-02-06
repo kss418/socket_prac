@@ -20,8 +20,6 @@ add_library(socket_prac
     src/server/epoll_acceptor.cpp
     src/server/epoll_server.cpp
     src/client/chat_client.cpp
-    src/protocol/line_parser.cpp
-    src/protocol/command_parser.cpp
 )
 
 target_include_directories(socket_prac PUBLIC

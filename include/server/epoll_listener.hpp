@@ -1,7 +1,7 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/reactor/epoll_wakeup.hpp"
-#include "socket_prac/core/unique_fd.hpp"
+#include "core/error_code.hpp"
+#include "reactor/epoll_wakeup.hpp"
+#include "core/unique_fd.hpp"
 
 class epoll_listener : public epoll_wakeup{
     unique_fd listen_fd;

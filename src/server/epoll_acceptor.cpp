@@ -1,4 +1,4 @@
-#include "socket_prac/server/epoll_acceptor.hpp"
+#include "server/epoll_acceptor.hpp"
 #include <sys/epoll.h>
 #include <cerrno>
 

@@ -1,10 +1,10 @@
 #pragma once
-#include "socket_prac/core/error_code.hpp"
-#include "socket_prac/net/io_helper.hpp"
-#include "socket_prac/reactor/epoll_registry.hpp"
-#include "socket_prac/reactor/event_loop.hpp"
-#include "socket_prac/server/epoll_listener.hpp"
-#include "socket_prac/server/epoll_acceptor.hpp"
+#include "core/error_code.hpp"
+#include "net/io_helper.hpp"
+#include "reactor/epoll_registry.hpp"
+#include "reactor/event_loop.hpp"
+#include "server/epoll_listener.hpp"
+#include "server/epoll_acceptor.hpp"
 #include <stop_token>
 
 class epoll_server{
