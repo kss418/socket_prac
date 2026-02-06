@@ -5,18 +5,22 @@
 event_loop::event_loop(epoll_registry& registry) : registry(registry){}
 
 std::expected<void, error_code> event_loop::run(
+    const std::stop_token& stop_token,
     const std::function<void(int, socket_info&, uint32_t)>& on_recv,
     const std::function<void(int, socket_info&)>& on_send,
     const std::function<void(int)>& on_client_error
 ){
-    while(true){
+    std::stop_callback on_stop(stop_token, [this](){ registry.request_wakeup(); });
+
+    while(!stop_token.stop_requested()){
         int event_sz = ::epoll_wait(registry.get_epfd(), events.data(), events.size(), -1);
-        registry.work();
         if(event_sz == -1){
             int ec = errno;
             if(errno == EINTR) continue;
             return std::unexpected(error_code::from_errno(ec));
         }
+        registry.work();
+        if(stop_token.stop_requested()) break;
 
         for(int i = 0;i < event_sz;++i){
             int fd = events[i].data.fd;
@@ -35,4 +39,6 @@ std::expected<void, error_code> event_loop::run(
             if(event & EPOLLOUT) on_send(fd, si);
         }
     }
+
+    return {};
 }

@@ -5,6 +5,7 @@
 #include "../include/event_loop.hpp"
 #include "../include/epoll_listener.hpp"
 #include "../include/epoll_acceptor.hpp"
+#include <stop_token>
 
 class epoll_server{
     epoll_registry registry;
@@ -23,4 +24,5 @@ public:
     static std::expected <epoll_server, error_code> create(const char* port);
     epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
+    std::expected <void, error_code> run(const std::stop_token& stop_token);
 };

@@ -1,6 +1,9 @@
 #include "../include/epoll_server.hpp"
 #include "../include/addr.hpp"
 #include "../include/epoll_utility.hpp"
+#include <condition_variable>
+#include <mutex>
+#include <optional>
 #include <thread>
 
 std::expected <epoll_server, error_code> epoll_server::create(const char* port){
@@ -32,26 +35,64 @@ epoll_server::epoll_server(
 ) : registry(std::move(registry)), listener(std::move(listener)){}
 
 std::expected <void, error_code> epoll_server::run(){
-    std::jthread accept_thread([this](std::stop_token st){
+    std::stop_source stop_source;
+    return run(stop_source.get_token());
+}
+
+std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_token){
+    std::mutex state_mtx;
+    std::condition_variable state_cv;
+    std::optional<error_code> error_opt;
+    bool stop_requested = false;
+
+    auto signal_stop = [&](std::optional<error_code> ec = std::nullopt){
+        {
+            std::lock_guard<std::mutex> lock(state_mtx);
+            if(ec && !error_opt) error_opt = *ec;
+            stop_requested = true;
+        }
+        state_cv.notify_one();
+    };
+
+    std::jthread accept_thread([this, &signal_stop](std::stop_token st){
         epoll_acceptor acceptor(listener, registry);
         auto accept_exp = acceptor.run(st);
-        if(!accept_exp) handle_error("acceptor thread error", accept_exp);
+        if(!accept_exp){
+            handle_error("acceptor thread error", accept_exp);
+            signal_stop(accept_exp.error());
+        }
     });
 
-    event_loop loop(registry);
-    auto run_exp = loop.run(
-        [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
-        [this](int fd, socket_info& si){ handle_send(fd, si); },
-        [this](int fd){ registry.request_unregister(fd); }
-    );
+    std::jthread event_thread([this, &signal_stop](std::stop_token st){
+        event_loop loop(registry);
+        auto run_exp = loop.run(
+            st,
+            [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
+            [this](int fd, socket_info& si){ handle_send(fd, si); },
+            [this](int fd){ registry.request_unregister(fd); }
+        );
 
-    if(!run_exp){
-        handle_error("run/event loop error", run_exp);
-        accept_thread.request_stop();
-        return std::unexpected(run_exp.error());
+        if(!run_exp){
+            handle_error("event loop thread error", run_exp);
+            signal_stop(run_exp.error());
+        }
+    });
+
+    std::stop_callback on_external_stop(stop_token, [&](){ signal_stop(); });
+
+    {
+        std::unique_lock<std::mutex> lock(state_mtx);
+        state_cv.wait(lock, [&](){ return stop_requested; });
     }
 
+    event_thread.request_stop();
     accept_thread.request_stop();
+    registry.request_wakeup();
+    listener.request_wakeup();
+    event_thread.join();
+    accept_thread.join();
+
+    if(error_opt) return std::unexpected(*error_opt);
     return {};
 }
 
