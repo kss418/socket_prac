@@ -1,13 +1,12 @@
 #include "../include/epoll_registry.hpp"
 #include "../include/epoll_utility.hpp"
+#include <cerrno>
 #include <sys/epoll.h>
-#include <unistd.h>
-#include <fcntl.h>
 
 epoll_registry::epoll_registry(epoll_registry&& other) noexcept{
     std::scoped_lock lock(other.reg_mtx, other.unreg_mtx);
     epfd = std::move(other.epfd);
-    evfd = std::move(other.evfd);
+    wake_fd = std::move(other.wake_fd);
     reg_q = std::move(other.reg_q);
     unreg_q = std::move(other.unreg_q);
     infos = std::move(other.infos);
@@ -16,8 +15,7 @@ epoll_registry::epoll_registry(epoll_registry&& other) noexcept{
 epoll_registry& epoll_registry::operator=(epoll_registry&& other) noexcept{
     if(this == &other) return *this;
     std::scoped_lock lock(reg_mtx, unreg_mtx, other.reg_mtx, other.unreg_mtx);
-    epfd = std::move(other.epfd);
-    evfd = std::move(other.evfd);
+    epoll_wakeup::operator=(std::move(other));
     reg_q = std::move(other.reg_q);
     unreg_q = std::move(other.unreg_q);
     infos = std::move(other.infos);
@@ -88,14 +86,7 @@ void epoll_registry::request_register(unique_fd fd, uint32_t interest){
         std::lock_guard<std::mutex> lock(reg_mtx);
         reg_q.push({std::move(fd), interest});
     }
-
-    uint64_t v = 1;
-    ssize_t n = ::write(evfd.get(), &v, sizeof(v));
-    if(n == -1){
-        int ec = errno;
-        if(ec == EAGAIN) return;
-        handle_error("request_register/write failed", error_code::from_errno(ec));
-    }
+    request_wakeup();
 }
 
 void epoll_registry::request_unregister(int fd){ 
@@ -103,27 +94,7 @@ void epoll_registry::request_unregister(int fd){
         std::lock_guard<std::mutex> lock(unreg_mtx);
         unreg_q.push(fd);
     }
-
-    uint64_t v = 1;
-    ssize_t n = ::write(evfd.get(), &v, sizeof(v));
-    if(n == -1){
-        int ec = errno;
-        if(ec == EAGAIN) return;
-        handle_error("request_unregister/write failed", error_code::from_errno(ec));
-    }
-}
-
-void epoll_registry::consume_wakeup(){
-    uint64_t v = 0;
-    while(true){
-        ssize_t n = ::read(evfd.get(), &v, sizeof(v));
-        if(n == -1){
-            int ec = errno;
-            if(ec == EAGAIN) return;
-            handle_error("consume_wakeup/read failed", error_code::from_errno(ec));
-        }
-        if(n == 0) return;
-    }
+    request_wakeup();
 }
 
 void epoll_registry::work(){
@@ -158,5 +129,3 @@ void epoll_registry::work(){
 
 epoll_registry::socket_info_it epoll_registry::find(int fd){ return infos.find(fd); }
 epoll_registry::socket_info_it epoll_registry::end(){ return infos.end(); }
-int epoll_registry::get_epfd() const{ return epfd.get(); }
-int epoll_registry::get_evfd() const{ return evfd.get(); }

@@ -15,6 +15,7 @@ add_library(socket_prac
     src/epoll_server.cpp
     src/chat_client.cpp
     src/epoll_registry.cpp
+    src/epoll_wakeup.cpp
     src/epoll_utility.cpp
     src/event_loop.cpp
     src/epoll_listener.cpp

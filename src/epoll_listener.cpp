@@ -1,9 +1,10 @@
 #include "../include/epoll_listener.hpp"
 #include "../include/epoll_utility.hpp"
+#include <cerrno>
 #include <sys/epoll.h>
 
-epoll_listener::epoll_listener(unique_fd epfd, unique_fd listen_fd) :
-    epfd(std::move(epfd)), listen_fd(std::move(listen_fd)){}
+epoll_listener::epoll_listener(epoll_wakeup wakeup, unique_fd listen_fd) :
+    epoll_wakeup(std::move(wakeup)), listen_fd(std::move(listen_fd)){}
 
 std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinfo* head){
     int ec = 0;
@@ -19,21 +20,20 @@ std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinf
 
         if(::bind(fd.get(), p->ai_addr, p->ai_addrlen) == 0){
             if(::listen(fd.get(), SOMAXCONN) == 0){
-                int epfd = ::epoll_create1(EPOLL_CLOEXEC);
-                if(epfd == -1){
-                    int ec = errno;
-                    handle_error("make_listener/epoll_create1 failed", error_code::from_errno(ec));
-                    return std::unexpected(error_code::from_errno(ec));
+                auto wakeup_exp = epoll_wakeup::create();
+                if(!wakeup_exp){
+                    handle_error("make_listener/epoll_wakeup::create failed", wakeup_exp);
+                    return std::unexpected(wakeup_exp.error());
                 }
 
-                auto add_exp = epoll_utility::add_fd(epfd, fd.get(), EPOLLIN);
+                auto add_exp = epoll_utility::add_fd(wakeup_exp->get_epfd(), fd.get(), EPOLLIN);
                 if(!add_exp){
-                    handle_error("make_listener/add_fd failed", add_exp);
+                    handle_error("make_listener/add_listener_fd failed", add_exp);
                     return std::unexpected(add_exp.error());
                 }
 
                 return epoll_listener{
-                    unique_fd{epfd}, unique_fd(std::move(fd))
+                    std::move(*wakeup_exp), unique_fd(std::move(fd))
                 };
             }
             ec = errno;
@@ -48,4 +48,3 @@ std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinf
 }
 
 int epoll_listener::get_fd() const{ return listen_fd.get(); }
-int epoll_listener::get_epfd() const{ return epfd.get(); }

@@ -27,6 +27,8 @@ std::expected <unique_fd, error_code> epoll_acceptor::make_client_fd(){
 }
 
 std::expected <void, error_code> epoll_acceptor::run(const std::stop_token& stop_token){
+    std::stop_callback on_stop(stop_token, [this](){ listener.request_wakeup(); });
+
     while(!stop_token.stop_requested()){
         int event_sz = ::epoll_wait(listener.get_epfd(), events.data(), events.size(), -1);
         if(event_sz == -1){
@@ -39,6 +41,11 @@ std::expected <void, error_code> epoll_acceptor::run(const std::stop_token& stop
             int fd = events[i].data.fd;
             uint32_t event = events[i].events;
 
+            if(fd == listener.get_wake_fd()){
+                listener.consume_wakeup();
+                continue;
+            }
+
             if(event & (EPOLLERR | EPOLLHUP)){
                 int ec = 0;
                 socklen_t len = sizeof(ec);
@@ -46,6 +53,7 @@ std::expected <void, error_code> epoll_acceptor::run(const std::stop_token& stop
                 return std::unexpected(error_code::from_errno(ec));
             }
 
+            if(fd != listener.get_fd()) continue;
             handle_accept();
         }
     }
