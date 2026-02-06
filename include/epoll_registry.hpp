@@ -6,12 +6,22 @@
 #include <unordered_map>
 #include <queue>
 #include <mutex>
+#include <variant>
 
 class epoll_registry : public epoll_wakeup{
-    std::queue <std::pair<unique_fd, uint32_t>> reg_q;
-    std::queue <int> unreg_q;
-    std::mutex reg_mtx;
-    std::mutex unreg_mtx;
+    struct register_command{
+        unique_fd fd;
+        uint32_t interest;
+    };
+
+    struct unregister_command{
+        int fd;
+    };
+
+    using command = std::variant<register_command, unregister_command>;
+
+    std::queue<command> cmd_q;
+    std::mutex cmd_mtx;
     std::unordered_map <int, socket_info> infos;
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);

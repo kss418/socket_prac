@@ -4,20 +4,18 @@
 #include <sys/epoll.h>
 
 epoll_registry::epoll_registry(epoll_registry&& other) noexcept{
-    std::scoped_lock lock(other.reg_mtx, other.unreg_mtx);
+    std::scoped_lock lock(other.cmd_mtx);
     epfd = std::move(other.epfd);
     wake_fd = std::move(other.wake_fd);
-    reg_q = std::move(other.reg_q);
-    unreg_q = std::move(other.unreg_q);
+    cmd_q = std::move(other.cmd_q);
     infos = std::move(other.infos);
 }
 
 epoll_registry& epoll_registry::operator=(epoll_registry&& other) noexcept{
     if(this == &other) return *this;
-    std::scoped_lock lock(reg_mtx, unreg_mtx, other.reg_mtx, other.unreg_mtx);
+    std::scoped_lock lock(cmd_mtx, other.cmd_mtx);
     epoll_wakeup::operator=(std::move(other));
-    reg_q = std::move(other.reg_q);
-    unreg_q = std::move(other.unreg_q);
+    cmd_q = std::move(other.cmd_q);
     infos = std::move(other.infos);
     return *this;
 }
@@ -83,47 +81,43 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
 
 void epoll_registry::request_register(unique_fd fd, uint32_t interest){ 
     {
-        std::lock_guard<std::mutex> lock(reg_mtx);
-        reg_q.push({std::move(fd), interest});
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(register_command{std::move(fd), interest});
     }
     request_wakeup();
 }
 
 void epoll_registry::request_unregister(int fd){ 
     {
-        std::lock_guard<std::mutex> lock(unreg_mtx);
-        unreg_q.push(fd);
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(unregister_command{fd});
     }
     request_wakeup();
 }
 
 void epoll_registry::work(){
     consume_wakeup();
-    
-    std::queue<std::pair<unique_fd, uint32_t>> pending_reg;
-    std::queue<int> pending_unreg;
+
+    std::queue<command> pending_cmd;
     {
-        std::lock_guard<std::mutex> lock(reg_mtx);
-        std::swap(pending_reg, reg_q);
-    }
-    {
-        std::lock_guard<std::mutex> lock(unreg_mtx);
-        std::swap(pending_unreg, unreg_q);
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        std::swap(pending_cmd, cmd_q);
     }
 
-    while(!pending_reg.empty()){
-        unique_fd fd = std::move(pending_reg.front().first);
-        uint32_t interest = pending_reg.front().second;
-        pending_reg.pop();
+    while(!pending_cmd.empty()){
+        command cmd = std::move(pending_cmd.front());
+        pending_cmd.pop();
 
-        auto reg_exp = register_fd(std::move(fd), interest);
-        if(!reg_exp) handle_error("work/register_fd failed", reg_exp);
-    }
-
-    while(!pending_unreg.empty()){
-        int fd = pending_unreg.front(); pending_unreg.pop();
-        auto unreg_exp = unregister_fd(fd);
-        if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
+        if(std::holds_alternative<register_command>(cmd)){
+            auto reg_cmd = std::get<register_command>(std::move(cmd));
+            auto reg_exp = register_fd(std::move(reg_cmd.fd), reg_cmd.interest);
+            if(!reg_exp) handle_error("work/register_fd failed", reg_exp);
+        }
+        else{
+            int fd = std::get<unregister_command>(cmd).fd;
+            auto unreg_exp = unregister_fd(fd);
+            if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
+        }
     }
 }
 
