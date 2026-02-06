@@ -4,12 +4,15 @@
 #include "../include/unique_fd.hpp"
 #include <unordered_map>
 #include <queue>
+#include <mutex>
 
 class epoll_registry{
     unique_fd epfd;
     unique_fd evfd;
     std::queue <std::pair<unique_fd, uint32_t>> reg_q;
     std::queue <int> unreg_q;
+    std::mutex reg_mtx;
+    std::mutex unreg_mtx;
     std::unordered_map <int, socket_info> infos;
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);
@@ -20,8 +23,8 @@ public:
     epoll_registry(const epoll_registry&) = delete;
     epoll_registry& operator=(const epoll_registry&) = delete;
 
-    epoll_registry(epoll_registry&& other) noexcept = default;
-    epoll_registry& operator=(epoll_registry&& other) noexcept = default;
+    epoll_registry(epoll_registry&& other) noexcept;
+    epoll_registry& operator=(epoll_registry&& other) noexcept;
 
     epoll_registry() = default;
     epoll_registry(unique_fd epfd, unique_fd evfd) : epfd(std::move(epfd)), evfd(std::move(evfd)){}
