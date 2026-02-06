@@ -20,6 +20,7 @@ public:
     epoll_server(epoll_server&& other) noexcept = default;
     epoll_server& operator=(epoll_server&& other) noexcept = default;
 
+    static std::expected <epoll_server, error_code> create(const char* port);
     epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
 };

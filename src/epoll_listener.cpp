@@ -6,7 +6,7 @@
 epoll_listener::epoll_listener(epoll_wakeup wakeup, unique_fd listen_fd) :
     epoll_wakeup(std::move(wakeup)), listen_fd(std::move(listen_fd)){}
 
-std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinfo* head){
+std::expected <epoll_listener, error_code> epoll_listener::create(addrinfo* head){
     int ec = 0;
     for(addrinfo* p = head; p; p = p->ai_next){
         unique_fd fd(::socket(p->ai_family, p->ai_socktype, p->ai_protocol));
@@ -22,13 +22,13 @@ std::expected <epoll_listener, error_code> epoll_listener::make_listener(addrinf
             if(::listen(fd.get(), SOMAXCONN) == 0){
                 auto wakeup_exp = epoll_wakeup::create();
                 if(!wakeup_exp){
-                    handle_error("make_listener/epoll_wakeup::create failed", wakeup_exp);
+                    handle_error("create/epoll_wakeup::create failed", wakeup_exp);
                     return std::unexpected(wakeup_exp.error());
                 }
 
                 auto add_exp = epoll_utility::add_fd(wakeup_exp->get_epfd(), fd.get(), EPOLLIN);
                 if(!add_exp){
-                    handle_error("make_listener/add_listener_fd failed", add_exp);
+                    handle_error("create/add_listener_fd failed", add_exp);
                     return std::unexpected(add_exp.error());
                 }
 

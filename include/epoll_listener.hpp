@@ -13,7 +13,7 @@ public:
     epoll_listener& operator=(epoll_listener&&) noexcept = default;
     
     explicit epoll_listener(epoll_wakeup wakeup, unique_fd listen_fd);
-    static std::expected <epoll_listener, error_code> make_listener(addrinfo* head);
+    static std::expected <epoll_listener, error_code> create(addrinfo* head);
 
     int get_fd() const;
 };

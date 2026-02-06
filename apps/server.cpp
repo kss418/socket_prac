@@ -1,8 +1,7 @@
 #include "../include/epoll_server.hpp"
-#include "../include/server_factory.hpp"
 
 int main(){
-    auto create_exp = server_factory::create_server("8080");
+    auto create_exp = epoll_server::create("8080");
     if(!create_exp) return 1;
 
     epoll_server server = std::move(*create_exp);
