@@ -1,7 +1,7 @@
 #pragma once
-#include "../include/error_code.hpp"
-#include "../include/unique_fd.hpp"
-#include "../include/fd_helper.hpp"
+#include "socket_prac/core/error_code.hpp"
+#include "socket_prac/core/unique_fd.hpp"
+#include "socket_prac/net/fd_helper.hpp"
 #include <unordered_map>
 #include <string_view>
 #include <string>

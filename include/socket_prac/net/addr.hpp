@@ -2,7 +2,7 @@
 #include <netdb.h>
 #include <memory>
 #include <string_view>
-#include "../include/error_code.hpp"
+#include "socket_prac/core/error_code.hpp"
 
 struct addr_option{
     int family = AF_UNSPEC; // IPv4, IPv6

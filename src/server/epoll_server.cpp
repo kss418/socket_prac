@@ -1,6 +1,6 @@
-#include "../include/epoll_server.hpp"
-#include "../include/addr.hpp"
-#include "../include/epoll_utility.hpp"
+#include "socket_prac/server/epoll_server.hpp"
+#include "socket_prac/net/addr.hpp"
+#include "socket_prac/reactor/epoll_utility.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <optional>

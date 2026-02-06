@@ -1,4 +1,4 @@
-#include "../include/addr.hpp"
+#include "socket_prac/net/addr.hpp"
 
 int addr::resolve(const char* host, const char* port, addr_option opt) noexcept{
     res.reset();

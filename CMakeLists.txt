@@ -7,19 +7,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(socket_prac
-    src/addr.cpp
-    src/error_code.cpp
-    src/fd_helper.cpp
-    src/unique_fd.cpp
-    src/io_helper.cpp
-    src/epoll_server.cpp
-    src/chat_client.cpp
-    src/epoll_registry.cpp
-    src/epoll_wakeup.cpp
-    src/epoll_utility.cpp
-    src/event_loop.cpp
-    src/epoll_listener.cpp
-    src/epoll_acceptor.cpp
+    src/core/error_code.cpp
+    src/core/unique_fd.cpp
+    src/net/addr.cpp
+    src/net/fd_helper.cpp
+    src/net/io_helper.cpp
+    src/reactor/epoll_wakeup.cpp
+    src/reactor/epoll_utility.cpp
+    src/reactor/epoll_registry.cpp
+    src/reactor/event_loop.cpp
+    src/server/epoll_listener.cpp
+    src/server/epoll_acceptor.cpp
+    src/server/epoll_server.cpp
+    src/client/chat_client.cpp
+    src/protocol/line_parser.cpp
+    src/protocol/command_parser.cpp
 )
 
 target_include_directories(socket_prac PUBLIC
