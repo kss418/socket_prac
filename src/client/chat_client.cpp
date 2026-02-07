@@ -25,7 +25,7 @@ std::expected <void, error_code> chat_client::run(){
         if(!std::getline(std::cin, s)) return {};
 
         s.push_back('\n');
-        si.append(s);
+        si.send.append(s);
         auto flush_send_exp = flush_send(server_fd.get(), si);
         if(!flush_send_exp){
             handle_error("flush_send failed", flush_send_exp);
@@ -38,7 +38,7 @@ std::expected <void, error_code> chat_client::run(){
             return std::unexpected(recv_ret_exp.error());
         }
 
-        flush_recv(si.recv_buf);
+        flush_recv(si.recv);
         if(recv_ret_exp->closed) return {};
     }
 

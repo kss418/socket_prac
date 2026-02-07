@@ -104,7 +104,7 @@ void epoll_server::handle_send(int fd, socket_info& si){
         return; 
     }
                 
-    if(si.offset < si.send_buf.size()) return;
+    if(si.send.has_pending()) return;
     si.interest &= ~EPOLLOUT;
                 
     auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), fd, si, si.interest);
@@ -123,8 +123,8 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-    si.append(si.recv_buf);
-    si.recv_buf.clear();
+    std::string received = si.recv.take_all();
+    si.send.append(received);
 
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
         handle_close(fd, si);

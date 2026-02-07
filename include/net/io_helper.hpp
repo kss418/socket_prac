@@ -2,25 +2,42 @@
 #include "core/error_code.hpp"
 #include "core/unique_fd.hpp"
 #include "net/fd_helper.hpp"
-#include <unordered_map>
 #include <string_view>
 #include <string>
 
 constexpr int BUF_SIZE = 4096;
 
-struct socket_info{
-    std::string recv_buf;
-    std::string send_buf;
+class send_buffer{
+    std::string buf;
     std::size_t offset = 0;
-    uint32_t interest = 0;
-    unique_fd ufd;
-    endpoint ep;
-
-    bool buf_compact();
-    bool buf_clear();
+public:
+    bool clear_if_done();
+    bool compact_if_needed();
 
     void append(std::string_view sv);
     void append(const char* p, std::size_t n);
+
+    bool has_pending() const;
+    const char* current_data() const;
+    std::size_t remaining() const;
+    void advance(std::size_t n);
+};
+
+class recv_buffer{
+    std::string buf;
+public:
+    void append(const char* p, std::size_t n);
+    std::string& raw();
+    const std::string& raw() const;
+    std::string take_all();
+};
+
+struct socket_info{
+    recv_buffer recv;
+    send_buffer send;
+    uint32_t interest = 0;
+    unique_fd ufd;
+    endpoint ep;
 };
 
 struct recv_info{
@@ -30,4 +47,4 @@ struct recv_info{
 
 std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si);
 std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si);
-void flush_recv(std::string& recv_buf);
+void flush_recv(recv_buffer& recv);

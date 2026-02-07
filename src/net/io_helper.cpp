@@ -1,54 +1,89 @@
 #include "net/io_helper.hpp"
 #include "net/fd_helper.hpp"
+#include "protocol/line_parser.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <array>
 #include <iostream>
 
-bool socket_info::buf_clear(){
-    if(send_buf.size() != offset) return false;
-    send_buf.clear();
+bool send_buffer::clear_if_done(){
+    if(buf.size() != offset) return false;
+    buf.clear();
     offset = 0;
     return true;
 }
 
-bool socket_info::buf_compact(){
+bool send_buffer::compact_if_needed(){
     if(offset < 8192) return false;
-    if (offset * 2 < send_buf.size()) return false; 
-    send_buf.erase(0, offset);
+    if(offset * 2 < buf.size()) return false;
+    buf.erase(0, offset);
     offset = 0;
     return true;
 }
 
-void socket_info::append(std::string_view sv){
-    send_buf += sv;
+void send_buffer::append(std::string_view sv){
+    buf += sv;
 }
 
-void socket_info::append(const char* p, std::size_t n){
-    send_buf.append(p, n);
+void send_buffer::append(const char* p, std::size_t n){
+    buf.append(p, n);
+}
+
+bool send_buffer::has_pending() const{
+    return offset < buf.size();
+}
+
+const char* send_buffer::current_data() const{
+    return buf.data() + offset;
+}
+
+std::size_t send_buffer::remaining() const{
+    return buf.size() - offset;
+}
+
+void send_buffer::advance(std::size_t n){
+    offset += n;
+}
+
+void recv_buffer::append(const char* p, std::size_t n){
+    buf.append(p, n);
+}
+
+std::string& recv_buffer::raw(){
+    return buf;
+}
+
+const std::string& recv_buffer::raw() const{
+    return buf;
+}
+
+std::string recv_buffer::take_all(){
+    std::string out = std::move(buf);
+    buf.clear();
+    return out;
 }
 
 std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si){
     std::size_t send_byte = 0;
-    while(si.offset < si.send_buf.size()){
-        ssize_t now = ::send(fd, si.send_buf.data() + si.offset, si.send_buf.size() - si.offset, MSG_NOSIGNAL);
+    while(si.send.has_pending()){
+        ssize_t now = ::send(fd, si.send.current_data(), si.send.remaining(), MSG_NOSIGNAL);
         if(now == -1){
             int ec = errno;
             if(ec == EINTR) continue;
-            if (ec == EAGAIN || ec == EWOULDBLOCK){
-                si.buf_compact();
+            if(ec == EAGAIN || ec == EWOULDBLOCK){
+                si.send.compact_if_needed();
                 return send_byte;
             }
             return std::unexpected(error_code::from_errno(ec));
         }
 
         if(now == 0) return std::unexpected(error_code::from_errno(EPIPE));
-        si.offset += static_cast<std::size_t>(now);
+        si.send.advance(static_cast<std::size_t>(now));
         send_byte += static_cast<std::size_t>(now);
     }
 
-    si.buf_clear();
+    si.send.clear_if_done();
     return send_byte;
 }
 
@@ -58,9 +93,9 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
     while(true){
         ssize_t now = ::recv(fd, tmp.data(), tmp.size(), 0);
         if(now > 0){
-            si.recv_buf.append(tmp.data(), static_cast<std::size_t>(now));
+            si.recv.append(tmp.data(), static_cast<std::size_t>(now));
             ret.byte += static_cast<std::size_t>(now);
-            if(si.recv_buf.find('\n') != std::string::npos) return ret;
+            if(line_parser::has_line(si.recv.raw())) return ret;
             continue;
         }
 
@@ -76,11 +111,10 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
     }
 }
 
-void flush_recv(std::string& recv_buf){
+void flush_recv(recv_buffer& recv){
     while(true){
-        auto pos = recv_buf.find('\n');
-        if(pos == std::string::npos) return;
-        std::cout << std::string_view(recv_buf.data(), pos) << "\n";
-        recv_buf.erase(0, pos + 1);
+        auto line = line_parser::parse_line(recv.raw());
+        if(!line) return;
+        std::cout << *line << "\n";
     }
 }
