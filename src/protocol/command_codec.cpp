@@ -46,6 +46,7 @@ std::string command_codec::encode(const command& cmd){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, cmd_nick>) return "nick\r" + c.nick + "\n";
         if constexpr (std::is_same_v<T, cmd_say>) return "say\r" + c.text + "\n";
+        if constexpr (std::is_same_v<T, cmd_response>) return "response\r" + c.text + "\n";
     }, cmd);    
 }
 
@@ -70,6 +71,13 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_nick{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "response"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_response{std::string(info.args[0])};
     }
 
     return std::unexpected(error_code::from_decode(decode_error::invalid_command));

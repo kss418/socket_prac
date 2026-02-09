@@ -124,7 +124,7 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-     while(true){
+    while(true){
         auto line = line_parser::parse_line(si.recv.raw());
         if(!line) break;
 
@@ -159,11 +159,15 @@ void epoll_server::execute(const command_codec::command& cmd, int fd, socket_inf
     std::visit([&](const auto& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, command_codec::cmd_say>){
-            si.send.append(command_codec::encode(command_codec::cmd_say{c.text}));
+            si.send.append(command_codec::cmd_response{c.text});
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
 
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_response>){
+            
         }
     }, cmd);
 }

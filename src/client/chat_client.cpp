@@ -26,7 +26,7 @@ std::expected <void, error_code> chat_client::run(){
         if(!std::getline(std::cin, s)) return {};
         if(s.empty()) continue;
 
-        si.send.append(command_codec::encode(command_codec::cmd_say{s}));
+        si.send.append(command_codec::cmd_say{s});
         auto flush_send_exp = flush_send(server_fd.get(), si);
         if(!flush_send_exp){
             handle_error("flush_send failed", flush_send_exp);
@@ -63,11 +63,15 @@ void chat_client::execute(const command_codec::command& cmd){
     std::visit([&](const auto& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, command_codec::cmd_say>){
-            std::cout << c.text << "\n";
+
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
 
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_response>){
+            std::cout << c.text << "\n"; 
         }
     }, cmd);
 }

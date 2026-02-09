@@ -22,6 +22,10 @@ bool send_buffer::compact_if_needed(){
     return true;
 }
 
+void send_buffer::append(const command_codec::command& cmd){
+    append(command_codec::encode(cmd));
+}
+
 void send_buffer::append(std::string_view sv){
     buf += sv;
 }
@@ -111,10 +115,3 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
     }
 }
 
-void flush_recv(recv_buffer& recv){
-    while(true){
-        auto line = line_parser::parse_line(recv.raw());
-        if(!line) return;
-        std::cout << *line << "\n";
-    }
-}

@@ -2,6 +2,7 @@
 #include "core/error_code.hpp"
 #include "core/unique_fd.hpp"
 #include "net/fd_helper.hpp"
+#include "protocol/command_codec.hpp"
 #include <string_view>
 #include <string>
 
@@ -16,6 +17,7 @@ public:
 
     void append(std::string_view sv);
     void append(const char* p, std::size_t n);
+    void append(const command_codec::command& cmd);
 
     bool has_pending() const;
     const char* current_data() const;
@@ -47,4 +49,3 @@ struct recv_info{
 
 std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si);
 std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si);
-void flush_recv(recv_buffer& recv);
