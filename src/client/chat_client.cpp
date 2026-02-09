@@ -1,5 +1,6 @@
 #include "client/chat_client.hpp"
 #include "net/addr.hpp"
+#include "protocol/line_parser.hpp"
 
 std::expected <void, error_code> chat_client::connect(const char* ip, const char* port){
     auto addr_exp = get_addr_client(ip, port);
@@ -23,9 +24,9 @@ std::expected <void, error_code> chat_client::run(){
     while(true){
         std::string s;
         if(!std::getline(std::cin, s)) return {};
+        if(s.empty()) continue;
 
-        s.push_back('\n');
-        si.send.append(s);
+        si.send.append(command_codec::encode(command_codec::cmd_say{s}));
         auto flush_send_exp = flush_send(server_fd.get(), si);
         if(!flush_send_exp){
             handle_error("flush_send failed", flush_send_exp);
@@ -38,9 +39,35 @@ std::expected <void, error_code> chat_client::run(){
             return std::unexpected(recv_ret_exp.error());
         }
 
-        flush_recv(si.recv);
+        while(true){
+            auto line = line_parser::parse_line(si.recv.raw());
+            if(!line) break;
+
+            auto dec_exp = command_codec::decode(*line);
+            if(!dec_exp){
+                handle_error("decode failed", dec_exp);
+                continue;
+            }
+
+            auto cmd = std::move(*dec_exp);
+            execute(cmd);
+        }
+
         if(recv_ret_exp->closed) return {};
     }
 
     return {};
+}
+
+void chat_client::execute(const command_codec::command& cmd){
+    std::visit([&](const auto& c){
+        using T = std::decay_t<decltype(c)>;
+        if constexpr (std::is_same_v<T, command_codec::cmd_say>){
+            std::cout << c.text << "\n";
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
+
+        }
+    }, cmd);
 }

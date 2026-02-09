@@ -1,6 +1,7 @@
 #pragma once
 #include "net/io_helper.hpp"
 #include "core/error_code.hpp"
+#include "protocol/command_codec.hpp"
 
 class chat_client{
     socket_info si{};
@@ -15,4 +16,5 @@ public:
     chat_client() = default;
     std::expected <void, error_code> connect(const char* ip, const char* port);
     std::expected <void, error_code> run();
+    void execute(const command_codec::command& cmd);
 };

@@ -5,6 +5,7 @@
 #include "reactor/event_loop.hpp"
 #include "server/epoll_listener.hpp"
 #include "server/epoll_acceptor.hpp"
+#include "protocol/command_codec.hpp"
 #include <stop_token>
 
 class epoll_server{
@@ -25,4 +26,5 @@ public:
     epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
     std::expected <void, error_code> run(const std::stop_token& stop_token);
+    void execute(const command_codec::command& cmd, int fd, socket_info& si);
 };

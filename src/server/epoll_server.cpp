@@ -1,6 +1,7 @@
 #include "server/epoll_server.hpp"
 #include "net/addr.hpp"
 #include "reactor/epoll_utility.hpp"
+#include "protocol/line_parser.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <optional>
@@ -123,8 +124,19 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-    std::string received = si.recv.take_all();
-    si.send.append(received);
+     while(true){
+        auto line = line_parser::parse_line(si.recv.raw());
+        if(!line) break;
+
+        auto dec_exp = command_codec::decode(*line);
+        if(!dec_exp){
+            handle_error("decode failed", dec_exp);
+            continue;
+        }
+
+        auto cmd = std::move(*dec_exp);
+        execute(cmd, fd, si);
+    }
 
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
         handle_close(fd, si);
@@ -141,4 +153,17 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
 void epoll_server::handle_close(int fd, socket_info& si){
     std::cout << to_string(si.ep) << " is disconnected" << "\n";
     registry.request_unregister(fd);
+}
+
+void epoll_server::execute(const command_codec::command& cmd, int fd, socket_info& si){
+    std::visit([&](const auto& c){
+        using T = std::decay_t<decltype(c)>;
+        if constexpr (std::is_same_v<T, command_codec::cmd_say>){
+            si.send.append(command_codec::encode(command_codec::cmd_say{c.text}));
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
+
+        }
+    }, cmd);
 }
