@@ -13,8 +13,11 @@ class epoll_server{
     epoll_listener listener;
 
     void handle_send(int fd, socket_info& si);
-    void handle_recv(int fd, socket_info& si, uint32_t event);
+    bool handle_recv(int fd, socket_info& si, uint32_t event);
     void handle_close(int fd, socket_info& si);
+    bool handle_execute(int fd, socket_info& si);
+
+    void execute_command(const command_codec::command& cmd, int fd, socket_info& si);
 public:
     epoll_server(const epoll_server&) = delete;
     epoll_server& operator=(const epoll_server&) = delete;
@@ -26,7 +29,4 @@ public:
     epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
     std::expected <void, error_code> run(const std::stop_token& stop_token);
-
-    bool execute_line(int fd, socket_info& si);
-    void execute_command(const command_codec::command& cmd, int fd, socket_info& si);
 };

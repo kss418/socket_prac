@@ -68,8 +68,9 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         event_loop loop(registry);
         auto run_exp = loop.run(
             st,
-            [this](int fd, socket_info& si, uint32_t event){ handle_recv(fd, si, event); },
+            [this](int fd, socket_info& si, uint32_t event){ return handle_recv(fd, si, event); },
             [this](int fd, socket_info& si){ handle_send(fd, si); },
+            [this](int fd, socket_info& si){ return handle_execute(fd, si); },
             [this](int fd){ registry.request_unregister(fd); }
         );
 
@@ -112,24 +113,24 @@ void epoll_server::handle_send(int fd, socket_info& si){
     if(!mod_ep_exp) registry.request_unregister(fd);
 }
 
-void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
+bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     auto dr_exp = drain_recv(fd, si);
     if(!dr_exp){
         handle_error(to_string(si.ep) + " run/handle_recv/drain_recv failed", dr_exp);
         registry.request_unregister(fd);
-        return; 
+        return false;
     }
 
     auto recv_info = *dr_exp;
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-    while(execute_line(fd, si));
-
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
         handle_close(fd, si);
-        return;
+        return false;
     }
+
+    return true;
 }
 
 void epoll_server::handle_close(int fd, socket_info& si){
@@ -137,14 +138,15 @@ void epoll_server::handle_close(int fd, socket_info& si){
     registry.request_unregister(fd);
 }
 
-bool epoll_server::execute_line(int fd, socket_info& si){
+bool epoll_server::handle_execute(int fd, socket_info& si){
+    if(registry.find(fd) == registry.end()) return false;
     auto line = line_parser::parse_line(si.recv.raw());
     if(!line) return false;
 
     auto dec_exp = command_codec::decode(*line);
     if(!dec_exp){
         handle_error("decode failed", dec_exp);
-        return false;
+        return true;
     }
 
     auto cmd = std::move(*dec_exp);
