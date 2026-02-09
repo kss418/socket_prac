@@ -10,6 +10,9 @@
 class event_loop{
     epoll_registry& registry;
     std::array<epoll_event, EVENT_SIZE> events;
+    bool is_read_event(uint32_t event);
+    bool is_write_event(uint32_t event);
+    bool is_error_event(uint32_t event);
 public:
     explicit event_loop(epoll_registry& registry);
     std::expected<void, error_code> run(

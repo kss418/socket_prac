@@ -27,7 +27,7 @@ std::expected<void, error_code> event_loop::run(
             int fd = events[i].data.fd;
             uint32_t event = events[i].events;
 
-            if(event & (EPOLLERR | EPOLLHUP)){
+            if(is_error_event(event)){
                 on_client_error(fd);
                 continue;
             }
@@ -37,15 +37,19 @@ std::expected<void, error_code> event_loop::run(
             auto& si = it->second;
 
             bool keep_alive = true;
-            if(event & (EPOLLIN | EPOLLRDHUP)){
-                keep_alive = on_recv(fd, si, event);
-            }
+            if(is_read_event(event)) keep_alive = on_recv(fd, si, event);
             if(!keep_alive) continue;
 
-            if(event & EPOLLOUT) on_send(fd, si);
-            while(on_execute(fd, si));
+            if(is_write_event(event)) on_send(fd, si);
+            if(is_read_event(event)){
+                while(on_execute(fd, si));
+            }
         }
     }
 
     return {};
 }
+
+bool event_loop::is_read_event(uint32_t event){ return (event & (EPOLLIN | EPOLLRDHUP)) != 0; }
+bool event_loop::is_write_event(uint32_t event){ return (event & EPOLLOUT) != 0; }
+bool event_loop::is_error_event(uint32_t event){ return (event & (EPOLLERR | EPOLLHUP)) != 0; }
