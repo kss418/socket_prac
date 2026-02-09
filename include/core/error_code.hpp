@@ -6,12 +6,21 @@
 #include <iostream>
 #include <cassert>
 
-enum class error_domain { errno_domain, gai_domain };
+namespace command_codec{
+    enum class decode_error : int;
+}
+
+enum class error_domain { errno_domain, gai_domain, decode_domain };
 struct error_code{
     error_domain domain{};
     int code{0};
+
     static error_code from_errno(int ec);
+
     static error_code from_gai(int ec);
+
+    static error_code from_decode(int ec);
+    static error_code from_decode(command_codec::decode_error ec);
 };
 
 std::string to_string(const error_code& ec);

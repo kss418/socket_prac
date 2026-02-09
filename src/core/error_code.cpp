@@ -1,11 +1,19 @@
 #include "core/error_code.hpp"
+#include "protocol/command_codec.hpp"
 
 error_code error_code::from_errno(int ec){ return {error_domain::errno_domain, ec}; }
+
 error_code error_code::from_gai(int ec){ return {error_domain::gai_domain, ec}; }
+
+error_code error_code::from_decode(int ec){ return {error_domain::decode_domain, ec}; }
+error_code error_code::from_decode(command_codec::decode_error ec){
+    return from_decode(static_cast<int>(ec));
+}
 
 std::string to_string(const error_code& ec){
     if(ec.domain == error_domain::errno_domain) return std::strerror(ec.code);
     else if(ec.domain == error_domain::gai_domain) return ::gai_strerror(ec.code);
+    else if(ec.domain == error_domain::decode_domain) return command_codec::decode_strerror(ec.code);
     return "unknown error";
 }
 
