@@ -124,6 +124,8 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
+    while(execute_line(fd, si));
+
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
         handle_close(fd, si);
         return;
@@ -135,7 +137,7 @@ void epoll_server::handle_close(int fd, socket_info& si){
     registry.request_unregister(fd);
 }
 
-bool epoll_server::execute_line(std::string_view buf, int fd, socket_info& si){
+bool epoll_server::execute_line(int fd, socket_info& si){
     auto line = line_parser::parse_line(si.recv.raw());
     if(!line) return false;
 
