@@ -124,30 +124,10 @@ void epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-    while(true){
-        auto line = line_parser::parse_line(si.recv.raw());
-        if(!line) break;
-
-        auto dec_exp = command_codec::decode(*line);
-        if(!dec_exp){
-            handle_error("decode failed", dec_exp);
-            continue;
-        }
-
-        auto cmd = std::move(*dec_exp);
-        execute(cmd, fd, si);
-    }
-
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
         handle_close(fd, si);
         return;
     }
-
-    if(si.interest & EPOLLOUT) return;
-    si.interest |= EPOLLOUT;
-
-    auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), fd, si, si.interest);
-    if(!mod_ep_exp) registry.request_unregister(fd);
 }
 
 void epoll_server::handle_close(int fd, socket_info& si){
@@ -155,11 +135,31 @@ void epoll_server::handle_close(int fd, socket_info& si){
     registry.request_unregister(fd);
 }
 
-void epoll_server::execute(const command_codec::command& cmd, int fd, socket_info& si){
+bool epoll_server::execute_line(std::string_view buf, int fd, socket_info& si){
+    auto line = line_parser::parse_line(si.recv.raw());
+    if(!line) return false;
+
+    auto dec_exp = command_codec::decode(*line);
+    if(!dec_exp){
+        handle_error("decode failed", dec_exp);
+        return false;
+    }
+
+    auto cmd = std::move(*dec_exp);
+    execute_command(cmd, fd, si);
+    return true;
+}
+
+void epoll_server::execute_command(const command_codec::command& cmd, int fd, socket_info& si){
     std::visit([&](const auto& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, command_codec::cmd_say>){
             si.send.append(command_codec::cmd_response{c.text});
+            if(si.interest & EPOLLOUT) return;
+            si.interest |= EPOLLOUT;
+
+            auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), fd, si, si.interest);
+            if(!mod_ep_exp) registry.request_unregister(fd);
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){

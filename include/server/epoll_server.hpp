@@ -26,5 +26,7 @@ public:
     epoll_server(epoll_registry registry, epoll_listener listener);
     std::expected <void, error_code> run();
     std::expected <void, error_code> run(const std::stop_token& stop_token);
-    void execute(const command_codec::command& cmd, int fd, socket_info& si);
+
+    bool execute_line(std::string_view buf, int fd, socket_info& si);
+    void execute_command(const command_codec::command& cmd, int fd, socket_info& si);
 };
