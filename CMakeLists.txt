@@ -22,6 +22,7 @@ add_library(socket_prac
     src/client/chat_client.cpp
     src/protocol/command_codec.cpp
     src/protocol/line_parser.cpp
+    src/core/thread_pool.cpp
 )
 
 target_include_directories(socket_prac PUBLIC

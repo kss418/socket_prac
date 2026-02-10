@@ -18,7 +18,13 @@ class epoll_registry : public epoll_wakeup{
         int fd;
     };
 
-    using command = std::variant<register_command, unregister_command>;
+    struct worker_result_command{
+        int fd;
+        command_codec::command cmd;
+        bool close = false;
+    };
+
+    using command = std::variant<register_command, unregister_command, worker_result_command>;
 
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
@@ -39,6 +45,11 @@ public:
 
     void request_register(unique_fd fd, uint32_t interest);
     void request_unregister(int fd);
+    void request_worker(
+        int fd,
+        command_codec::command cmd,
+        bool close = false
+    );
     void work();
 
     socket_info_it find(int fd);

@@ -28,7 +28,7 @@ std::expected <epoll_server, error_code> epoll_server::create(const char* port){
 
     epoll_registry registry(std::move(*wakeup_exp));
     epoll_listener listener = std::move(*listen_fd_exp);
-    return epoll_server(std::move(registry), std::move(listener));
+    return std::expected<epoll_server, error_code>(std::in_place, std::move(registry), std::move(listener));
 }
 
 epoll_server::epoll_server(
@@ -70,7 +70,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
             st,
             [this](int fd, socket_info& si, uint32_t event){ return handle_recv(fd, si, event); },
             [this](int fd, socket_info& si){ handle_send(fd, si); },
-            [this](int fd, socket_info& si){ return handle_execute(fd, si); },
+            [this](int fd, socket_info& si){ return handle_execute(fd); },
             [this](int fd){ registry.request_unregister(fd); }
         );
 
@@ -138,9 +138,10 @@ void epoll_server::handle_close(int fd, socket_info& si){
     registry.request_unregister(fd);
 }
 
-bool epoll_server::handle_execute(int fd, socket_info& si){
-    if(registry.find(fd) == registry.end()) return false;
-    auto line = line_parser::parse_line(si.recv.raw());
+bool epoll_server::handle_execute(int fd){
+    auto it = registry.find(fd);
+    if(it == registry.end()) return false;
+    auto line = line_parser::parse_line(it->second.recv.raw());
     if(!line) return false;
 
     auto dec_exp = command_codec::decode(*line);
@@ -150,28 +151,6 @@ bool epoll_server::handle_execute(int fd, socket_info& si){
     }
 
     auto cmd = std::move(*dec_exp);
-    execute_command(cmd, fd, si);
-    return true;
+    return pool.enqueue(cmd, registry, fd);;
 }
 
-void epoll_server::execute_command(const command_codec::command& cmd, int fd, socket_info& si){
-    std::visit([&](const auto& c){
-        using T = std::decay_t<decltype(c)>;
-        if constexpr (std::is_same_v<T, command_codec::cmd_say>){
-            si.send.append(command_codec::cmd_response{c.text});
-            if(si.interest & EPOLLOUT) return;
-            si.interest |= EPOLLOUT;
-
-            auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), fd, si, si.interest);
-            if(!mod_ep_exp) registry.request_unregister(fd);
-        }
-
-        if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
-
-        }
-
-        if constexpr (std::is_same_v<T, command_codec::cmd_response>){
-            
-        }
-    }, cmd);
-}
