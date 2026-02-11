@@ -59,7 +59,7 @@ void thread_pool::execute(const task& t){
     std::visit([&](const auto& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, command_codec::cmd_say>){
-            reg.request_worker(fd, command_codec::cmd_response{c.text});
+            reg.request_broadcast(fd, command_codec::cmd_response{c.text});
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){

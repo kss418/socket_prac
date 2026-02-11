@@ -15,9 +15,9 @@ public:
     bool clear_if_done();
     bool compact_if_needed();
 
-    void append(std::string_view sv);
-    void append(const char* p, std::size_t n);
-    void append(const command_codec::command& cmd);
+    bool append(std::string_view sv);
+    bool append(const char* p, std::size_t n);
+    bool append(const command_codec::command& cmd);
 
     bool has_pending() const;
     const char* current_data() const;

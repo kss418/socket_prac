@@ -22,16 +22,20 @@ bool send_buffer::compact_if_needed(){
     return true;
 }
 
-void send_buffer::append(const command_codec::command& cmd){
-    append(command_codec::encode(cmd));
+bool send_buffer::append(const command_codec::command& cmd){
+    return append(command_codec::encode(cmd));
 }
 
-void send_buffer::append(std::string_view sv){
+bool send_buffer::append(std::string_view sv){
+    bool was_pending = has_pending();
     buf += sv;
+    return !was_pending && has_pending();
 }
 
-void send_buffer::append(const char* p, std::size_t n){
+bool send_buffer::append(const char* p, std::size_t n){
+    bool was_pending = has_pending();
     buf.append(p, n);
+    return !was_pending && has_pending();
 }
 
 bool send_buffer::has_pending() const{
@@ -114,4 +118,3 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
         return std::unexpected(error_code::from_errno(ec));
     }
 }
-
