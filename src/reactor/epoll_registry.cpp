@@ -72,10 +72,44 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
-    auto del_ep_exp = epoll_utility::del_fd(epfd.get(), fd);
-    if(!del_ep_exp) handle_error("unregister_fd/del_ep failed", del_ep_exp);
+    auto it = infos.find(fd);
+    if(it == infos.end()) return {};
 
-    if(infos.contains(fd)) infos.erase(fd);
+    auto del_ep_exp = epoll_utility::del_fd(epfd.get(), fd);
+    if(!del_ep_exp){
+        const error_code& ec = del_ep_exp.error();
+        bool ignorable = ec.domain == error_domain::errno_domain
+            && (ec.code == ENOENT || ec.code == EBADF);
+        if(!ignorable) handle_error("unregister_fd/del_ep failed", del_ep_exp);
+    }
+
+    infos.erase(it);
+    return {};
+}
+
+std::expected <void, error_code> epoll_registry::sync_interest(int fd, socket_info& si){
+    auto mod_exp = epoll_utility::update_interest(epfd.get(), fd, si, si.interest);
+    if(!mod_exp){
+        unregister_fd(fd);
+        return std::unexpected(mod_exp.error());
+    }
+    return {};
+}
+
+std::expected <void, error_code> epoll_registry::append_send(
+    int fd,
+    socket_info& si,
+    const command_codec::command& cmd
+){
+    if(!si.send.append(cmd)) return {};
+
+    si.interest |= EPOLLOUT;
+    auto sync_exp = sync_interest(fd, si);
+    if(!sync_exp){
+        handle_error("work/sync_interest failed", sync_exp);
+        return std::unexpected(sync_exp.error());
+    }
+
     return {};
 }
 
@@ -95,10 +129,18 @@ void epoll_registry::request_unregister(int fd){
     request_wakeup();
 }
 
-void epoll_registry::request_worker(int fd, command_codec::command cmd, bool close){ 
+void epoll_registry::request_send(int fd, command_codec::command cmd){ 
     {
         std::lock_guard<std::mutex> lock(cmd_mtx);
-        cmd_q.emplace(worker_result_command{fd, std::move(cmd), close});
+        cmd_q.emplace(send_one_command{fd, std::move(cmd)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::request_broadcast(int send_fd, command_codec::command cmd){ 
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(broadcast_command{send_fd, std::move(cmd)});
     }
     request_wakeup();
 }
@@ -126,29 +168,27 @@ void epoll_registry::work(){
             auto unreg_exp = unregister_fd(fd);
             if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
         }
-        else if(std::holds_alternative<worker_result_command>(cmd)){
-            auto worker_cmd = std::get<worker_result_command>(std::move(cmd));
+        else if(std::holds_alternative<send_one_command>(cmd)){
+            auto worker_cmd = std::get<send_one_command>(std::move(cmd));
             int fd = worker_cmd.fd;
             auto c = std::move(worker_cmd.cmd);
-            bool close = worker_cmd.close;
 
             auto it = infos.find(fd);
             if(it == infos.end()) continue;
             auto& si = it->second;
 
-            bool was_pending = si.send.has_pending();
-            si.send.append(c);
-            if(!was_pending && si.send.has_pending()){
-                si.interest |= EPOLLOUT;
-                auto mod_exp = epoll_utility::update_interest(epfd.get(), fd, si, si.interest);
-                if(!mod_exp){
-                    handle_error("work/update_interest failed", mod_exp);
-                    unregister_fd(fd);
-                    continue;
-                }
-            }
+            auto append_exp = append_send(fd, si, c);
+            if(!append_exp) continue;
+        }
+        else if(std::holds_alternative<broadcast_command>(cmd)){
+            auto worker_cmd = std::get<broadcast_command>(std::move(cmd));
+            int send_fd = worker_cmd.fd;
+            auto c = std::move(worker_cmd.cmd);
 
-            if(close) unregister_fd(fd);
+            for(auto& [fd, si] : infos){
+                auto append_exp = append_send(fd, si, c);
+                if(!append_exp) continue;
+            }
         }
     }
 }

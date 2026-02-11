@@ -9,7 +9,7 @@ std::expected<void, error_code> event_loop::run(
     const std::function<bool(int, socket_info&, uint32_t)>& on_recv,
     const std::function<void(int, socket_info&)>& on_send,
     const std::function<bool(int, socket_info&)>& on_execute,
-    const std::function<void(int)>& on_client_error
+    const std::function<void(int, uint32_t)>& on_client_error
 ){
     std::stop_callback on_stop(stop_token, [this](){ registry.request_wakeup(); });
 
@@ -28,7 +28,7 @@ std::expected<void, error_code> event_loop::run(
             uint32_t event = events[i].events;
 
             if(is_error_event(event)){
-                on_client_error(fd);
+                on_client_error(fd, event);
                 continue;
             }
 
@@ -50,6 +50,6 @@ std::expected<void, error_code> event_loop::run(
     return {};
 }
 
-bool event_loop::is_read_event(uint32_t event){ return (event & (EPOLLIN | EPOLLRDHUP)) != 0; }
+bool event_loop::is_read_event(uint32_t event){ return (event & (EPOLLIN | EPOLLRDHUP | EPOLLHUP)) != 0; }
 bool event_loop::is_write_event(uint32_t event){ return (event & EPOLLOUT) != 0; }
-bool event_loop::is_error_event(uint32_t event){ return (event & (EPOLLERR | EPOLLHUP)) != 0; }
+bool event_loop::is_error_event(uint32_t event){ return (event & EPOLLERR) != 0; }

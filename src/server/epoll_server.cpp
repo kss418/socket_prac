@@ -2,10 +2,13 @@
 #include "net/addr.hpp"
 #include "reactor/epoll_utility.hpp"
 #include "protocol/line_parser.hpp"
+#include <cerrno>
 #include <condition_variable>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
+#include <sys/socket.h>
 
 std::expected <epoll_server, error_code> epoll_server::create(const char* port){
     auto addr_exp = get_addr_server(port);
@@ -71,7 +74,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
             [this](int fd, socket_info& si, uint32_t event){ return handle_recv(fd, si, event); },
             [this](int fd, socket_info& si){ handle_send(fd, si); },
             [this](int fd, socket_info& si){ return handle_execute(fd); },
-            [this](int fd){ registry.request_unregister(fd); }
+            [this](int fd, uint32_t event){ handle_client_error(fd, event); }
         );
 
         if(!run_exp){
@@ -138,6 +141,21 @@ void epoll_server::handle_close(int fd, socket_info& si){
     registry.request_unregister(fd);
 }
 
+void epoll_server::handle_client_error(int fd, uint32_t event){
+    int ec = ECONNRESET;
+    int so_error = 0;
+    socklen_t len = sizeof(so_error);
+    if(::getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) == -1){
+        ec = errno;
+    }
+    else if(so_error != 0){
+        ec = so_error;
+    }
+
+    handle_error("run/handle_client_error", error_code::from_errno(ec));
+    registry.request_unregister(fd);
+}
+
 bool epoll_server::handle_execute(int fd){
     auto it = registry.find(fd);
     if(it == registry.end()) return false;
@@ -151,6 +169,5 @@ bool epoll_server::handle_execute(int fd){
     }
 
     auto cmd = std::move(*dec_exp);
-    return pool.enqueue(cmd, registry, fd);;
+    return pool.enqueue(cmd, registry, fd);
 }
-

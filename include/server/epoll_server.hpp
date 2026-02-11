@@ -17,6 +17,7 @@ class epoll_server{
     void handle_send(int fd, socket_info& si);
     bool handle_recv(int fd, socket_info& si, uint32_t event);
     void handle_close(int fd, socket_info& si);
+    void handle_client_error(int fd, uint32_t event);
     bool handle_execute(int fd);
 public:
     epoll_server(const epoll_server&) = delete;

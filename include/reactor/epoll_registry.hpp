@@ -18,13 +18,17 @@ class epoll_registry : public epoll_wakeup{
         int fd;
     };
 
-    struct worker_result_command{
+    struct send_one_command{
         int fd;
         command_codec::command cmd;
-        bool close = false;
     };
 
-    using command = std::variant<register_command, unregister_command, worker_result_command>;
+    struct broadcast_command{
+        int fd;
+        command_codec::command cmd;
+    };
+
+    using command = std::variant<register_command, unregister_command, send_one_command, broadcast_command>;
 
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
@@ -32,6 +36,12 @@ class epoll_registry : public epoll_wakeup{
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);
     std::expected <void, error_code> unregister_fd(int fd);
+    std::expected <void, error_code> sync_interest(int fd, socket_info& si);
+    std::expected <void, error_code> append_send(
+        int fd,
+        socket_info& si,
+        const command_codec::command& cmd
+    );
 public:
     using socket_info_it = std::unordered_map<int, socket_info>::iterator;
     epoll_registry(const epoll_registry&) = delete;
@@ -45,11 +55,9 @@ public:
 
     void request_register(unique_fd fd, uint32_t interest);
     void request_unregister(int fd);
-    void request_worker(
-        int fd,
-        command_codec::command cmd,
-        bool close = false
-    );
+    void request_send(int fd, command_codec::command cmd);
+    void request_broadcast(int send_fd, command_codec::command cmd);
+
     void work();
 
     socket_info_it find(int fd);

@@ -20,6 +20,6 @@ public:
         const std::function<bool(int, socket_info&, uint32_t)>& on_recv,
         const std::function<void(int, socket_info&)>& on_send,
         const std::function<bool(int, socket_info&)>& on_execute,
-        const std::function<void(int)>& on_client_error
+        const std::function<void(int, uint32_t)>& on_client_error
     );
 };
