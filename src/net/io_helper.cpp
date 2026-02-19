@@ -7,19 +7,55 @@
 #include <array>
 #include <iostream>
 
-bool send_buffer::clear_if_done(){
+bool offset_buffer::clear_if_done(){
     if(buf.size() != offset) return false;
     buf.clear();
     offset = 0;
     return true;
 }
 
-bool send_buffer::compact_if_needed(){
+bool offset_buffer::compact_if_needed(){
     if(offset < 8192) return false;
     if(offset * 2 < buf.size()) return false;
     buf.erase(0, offset);
     offset = 0;
     return true;
+}
+
+void offset_buffer::reset_offset(){
+    offset = 0;
+}
+
+bool offset_buffer::has_pending() const{
+    return offset < buf.size();
+}
+
+const char* offset_buffer::current_data() const{
+    return buf.data() + offset;
+}
+
+std::size_t offset_buffer::remaining() const{
+    return buf.size() - offset;
+}
+
+void offset_buffer::advance(std::size_t n){
+    offset += n;
+}
+
+std::size_t offset_buffer::get_offset() const{
+    return offset;
+}
+
+void offset_buffer::set_offset(std::size_t new_offset){
+    offset = new_offset;
+}
+
+std::string& offset_buffer::raw(){
+    return buf;
+}
+
+const std::string& offset_buffer::raw() const{
+    return buf;
 }
 
 bool send_buffer::append(const command_codec::command& cmd){
@@ -38,37 +74,14 @@ bool send_buffer::append(const char* p, std::size_t n){
     return !was_pending && has_pending();
 }
 
-bool send_buffer::has_pending() const{
-    return offset < buf.size();
-}
-
-const char* send_buffer::current_data() const{
-    return buf.data() + offset;
-}
-
-std::size_t send_buffer::remaining() const{
-    return buf.size() - offset;
-}
-
-void send_buffer::advance(std::size_t n){
-    offset += n;
-}
-
 void recv_buffer::append(const char* p, std::size_t n){
     buf.append(p, n);
-}
-
-std::string& recv_buffer::raw(){
-    return buf;
-}
-
-const std::string& recv_buffer::raw() const{
-    return buf;
 }
 
 std::string recv_buffer::take_all(){
     std::string out = std::move(buf);
     buf.clear();
+    reset_offset();
     return out;
 }
 
@@ -103,7 +116,7 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
         if(now > 0){
             si.recv.append(tmp.data(), static_cast<std::size_t>(now));
             ret.byte += static_cast<std::size_t>(now);
-            if(line_parser::has_line(si.recv.raw())) return ret;
+            if(line_parser::has_line(si.recv)) return ret;
             continue;
         }
 

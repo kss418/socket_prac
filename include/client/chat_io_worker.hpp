@@ -17,7 +17,7 @@ class chat_io_worker{
     socket_info& si;
     unique_fd& server_fd;
     chat_executor& executor;
-    std::string stdin_buf;
+    recv_buffer stdin_buf;
 
     static parsed_command parse(const std::string& line);
 

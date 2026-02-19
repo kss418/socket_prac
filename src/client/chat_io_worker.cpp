@@ -72,7 +72,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             auto recv_exp = recv_socket();
             if(!recv_exp) return std::unexpected(recv_exp.error());
 
-            while(auto line = line_parser::parse_line(si.recv.raw())){
+            while(auto line = line_parser::parse_line(si.recv)){
                 auto dec_exp = command_codec::decode(*line);
                 if(!dec_exp){
                     handle_error("chat_io_worker/decode failed", dec_exp);

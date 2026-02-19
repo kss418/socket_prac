@@ -159,7 +159,7 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
 bool epoll_server::handle_execute(int fd){
     auto it = registry.find(fd);
     if(it == registry.end()) return false;
-    auto line = line_parser::parse_line(it->second.recv.raw());
+    auto line = line_parser::parse_line(it->second.recv);
     if(!line) return false;
 
     auto dec_exp = command_codec::decode(*line);
