@@ -18,6 +18,12 @@ std::expected <epoll_listener, error_code> epoll_listener::create(addrinfo* head
             continue;
         }
 
+        auto nonblocking_exp = epoll_utility::set_nonblocking(fd.get());
+        if(!nonblocking_exp){
+            ec = nonblocking_exp.error().code;
+            continue;
+        }
+
         if(::bind(fd.get(), p->ai_addr, p->ai_addrlen) == 0){
             if(::listen(fd.get(), SOMAXCONN) == 0){
                 auto wakeup_exp = epoll_wakeup::create();

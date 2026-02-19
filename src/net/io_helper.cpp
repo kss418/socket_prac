@@ -116,7 +116,6 @@ std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
         if(now > 0){
             si.recv.append(tmp.data(), static_cast<std::size_t>(now));
             ret.byte += static_cast<std::size_t>(now);
-            if(line_parser::has_line(si.recv)) return ret;
             continue;
         }
 

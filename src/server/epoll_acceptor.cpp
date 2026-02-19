@@ -1,23 +1,31 @@
 #include "server/epoll_acceptor.hpp"
 #include <sys/epoll.h>
+#include <sys/socket.h>
 #include <cerrno>
 
 epoll_acceptor::epoll_acceptor(epoll_listener& listener, epoll_registry& registry) : 
     listener(listener), registry(registry){};
 
 void epoll_acceptor::handle_accept(){
-    auto client_fd_exp = make_client_fd();
-    if(!client_fd_exp){
-        handle_error("acceptor/handle_accept/make_client_fd failed", client_fd_exp);
-        return;
-    }
+    while(true){
+        auto client_fd_exp = make_client_fd();
+        if(!client_fd_exp){
+            const error_code& ec = client_fd_exp.error();
+            bool is_end = (ec.domain == error_domain::errno_domain)
+                && (ec.code == EAGAIN || ec.code == EWOULDBLOCK);
+            if(is_end) return;
 
-    registry.request_register(std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
+            handle_error("acceptor/handle_accept/make_client_fd failed", client_fd_exp);
+            return;
+        }
+
+        registry.request_register(std::move(*client_fd_exp), EPOLLIN | EPOLLRDHUP);
+    }
 }
 
 std::expected <unique_fd, error_code> epoll_acceptor::make_client_fd(){
     while(true){
-        int client_fd = ::accept(listener.get_fd(), nullptr, nullptr);
+        int client_fd = ::accept4(listener.get_fd(), nullptr, nullptr, SOCK_CLOEXEC);
         if(client_fd != -1) return unique_fd(client_fd);
 
         int ec = errno;
