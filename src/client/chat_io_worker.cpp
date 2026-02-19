@@ -2,13 +2,36 @@
 #include "protocol/line_parser.hpp"
 #include <array>
 #include <cerrno>
+#include <cstddef>
 #include <poll.h>
+#include <string_view>
 #include <sys/socket.h>
 #include <unistd.h>
 
 chat_io_worker::chat_io_worker(
     socket_info& si, unique_fd& server_fd, chat_executor& executor
 ) : si(si), server_fd(server_fd), executor(executor){}
+
+chat_io_worker::parsed_command chat_io_worker::parse(const std::string& line){
+    parsed_command parsed{};
+
+    std::size_t idx = 0;
+    const std::size_t n = line.size();
+    while(idx < n && line[idx] == ' ') ++idx;
+
+    while(idx < n){
+        const std::size_t start = idx;
+        while(idx < n && line[idx] != ' ') ++idx;
+
+        std::string token = line.substr(start, idx - start);
+        if(parsed.cmd.empty()) parsed.cmd = std::move(token);
+        else parsed.args.push_back(std::move(token));
+
+        while(idx < n && line[idx] == ' ') ++idx;
+    }
+
+    return parsed;
+}
 
 std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
     std::stop_callback on_stop(stop_token, [this](){
@@ -90,10 +113,41 @@ std::expected<bool, error_code> chat_io_worker::send_stdin(){
     while(auto line = line_parser::parse_line(stdin_buf)){
         if(line->empty()) continue;
 
-        si.send.append(command_codec::cmd_say{*line});
+        const bool had_pending = si.send.has_pending();
+        execute(*line);
+        if(!had_pending && !si.send.has_pending()) continue;
+
         auto fs_exp = flush_send(server_fd.get(), si);
         if(!fs_exp) return std::unexpected(fs_exp.error());
     }
 
     return false;
+}
+
+void chat_io_worker::execute(const std::string& line){
+    if(line.empty()) return;
+    if(line[0] != '/'){
+        say(line);
+        return;
+    }
+
+    parsed_command parsed = parse(line);
+    if(parsed.cmd.empty()) return;
+    
+    if(parsed.cmd == "/nick"){
+        if(parsed.args.size() != 1) return;
+        change_nickname(parsed.args[0]);
+        return;
+    }
+    else{
+        std::cout << "unknown command" << "\n";
+    }
+}
+
+void chat_io_worker::say(const std::string& line){
+    si.send.append(command_codec::cmd_say{line});
+}
+
+void chat_io_worker::change_nickname(const std::string& nick){
+    si.send.append(command_codec::cmd_nick{nick});
 }

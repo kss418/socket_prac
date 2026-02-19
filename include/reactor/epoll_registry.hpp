@@ -28,7 +28,12 @@ class epoll_registry : public epoll_wakeup{
         command_codec::command cmd;
     };
 
-    using command = std::variant<register_command, unregister_command, send_one_command, broadcast_command>;
+    struct change_nickname_command{
+        int fd;
+        std::string nick;
+    };
+
+    using command = std::variant<register_command, unregister_command, send_one_command, broadcast_command, change_nickname_command>;
 
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
@@ -42,6 +47,12 @@ class epoll_registry : public epoll_wakeup{
         socket_info& si,
         const command_codec::command& cmd
     );
+
+    void handle_command(register_command&& cmd);
+    void handle_command(const unregister_command& cmd);
+    void handle_command(send_one_command&& cmd);
+    void handle_command(broadcast_command&& cmd);
+    void handle_command(change_nickname_command&& cmd);
 public:
     using socket_info_it = std::unordered_map<int, socket_info>::iterator;
     epoll_registry(const epoll_registry&) = delete;
@@ -57,6 +68,7 @@ public:
     void request_unregister(int fd);
     void request_send(int fd, command_codec::command cmd);
     void request_broadcast(int send_fd, command_codec::command cmd);
+    void request_change_nickname(int send_fd, std::string nick);
 
     void work();
 

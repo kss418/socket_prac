@@ -63,7 +63,7 @@ void thread_pool::execute(const task& t){
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
-
+            reg.request_change_nickname(fd, c.nick);
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_response>){

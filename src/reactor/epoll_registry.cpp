@@ -145,6 +145,63 @@ void epoll_registry::request_broadcast(int send_fd, command_codec::command cmd){
     request_wakeup();
 }
 
+void epoll_registry::request_change_nickname(int send_fd, std::string nick){ 
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(change_nickname_command{send_fd, std::move(nick)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::handle_command(register_command&& cmd){
+    auto reg_exp = register_fd(std::move(cmd.fd), cmd.interest);
+    if(!reg_exp) handle_error("work/register_fd failed", reg_exp);
+}
+
+void epoll_registry::handle_command(const unregister_command& cmd){
+    auto unreg_exp = unregister_fd(cmd.fd);
+    if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
+}
+
+void epoll_registry::handle_command(send_one_command&& cmd){
+    auto it = infos.find(cmd.fd);
+    if(it == infos.end()) return;
+
+    auto& si = it->second;
+    auto append_exp = append_send(cmd.fd, si, cmd.cmd);
+    if(!append_exp) return;
+}
+
+void epoll_registry::handle_command(broadcast_command&& cmd){
+    if(const auto* response = std::get_if<command_codec::cmd_response>(&cmd.cmd)){
+        std::string nickname = "guest";
+        auto sender_it = infos.find(cmd.fd);
+        if(sender_it != infos.end() && !sender_it->second.nickname.empty()){
+            nickname = sender_it->second.nickname;
+        }
+
+        command_codec::command named_msg =
+            command_codec::cmd_response{nickname + ": " + response->text};
+        for(auto& [fd, si] : infos){
+            auto append_exp = append_send(fd, si, named_msg);
+            if(!append_exp) continue;
+        }
+        return;
+    }
+
+    for(auto& [fd, si] : infos){
+        auto append_exp = append_send(fd, si, cmd.cmd);
+        if(!append_exp) continue;
+    }
+}
+
+void epoll_registry::handle_command(change_nickname_command&& cmd){
+    auto it = infos.find(cmd.fd);
+    if(it == infos.end()) return;
+
+    it->second.nickname = std::move(cmd.nick);
+}
+
 void epoll_registry::work(){
     consume_wakeup();
 
@@ -157,39 +214,7 @@ void epoll_registry::work(){
     while(!pending_cmd.empty()){
         command cmd = std::move(pending_cmd.front());
         pending_cmd.pop();
-
-        if(std::holds_alternative<register_command>(cmd)){
-            auto reg_cmd = std::get<register_command>(std::move(cmd));
-            auto reg_exp = register_fd(std::move(reg_cmd.fd), reg_cmd.interest);
-            if(!reg_exp) handle_error("work/register_fd failed", reg_exp);
-        }
-        else if(std::holds_alternative<unregister_command>(cmd)){
-            int fd = std::get<unregister_command>(cmd).fd;
-            auto unreg_exp = unregister_fd(fd);
-            if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
-        }
-        else if(std::holds_alternative<send_one_command>(cmd)){
-            auto worker_cmd = std::get<send_one_command>(std::move(cmd));
-            int fd = worker_cmd.fd;
-            auto c = std::move(worker_cmd.cmd);
-
-            auto it = infos.find(fd);
-            if(it == infos.end()) continue;
-            auto& si = it->second;
-
-            auto append_exp = append_send(fd, si, c);
-            if(!append_exp) continue;
-        }
-        else if(std::holds_alternative<broadcast_command>(cmd)){
-            auto worker_cmd = std::get<broadcast_command>(std::move(cmd));
-            int send_fd = worker_cmd.fd;
-            auto c = std::move(worker_cmd.cmd);
-
-            for(auto& [fd, si] : infos){
-                auto append_exp = append_send(fd, si, c);
-                if(!append_exp) continue;
-            }
-        }
+        std::visit([this](auto&& c){ handle_command(std::move(c)); }, std::move(cmd));
     }
 }
 

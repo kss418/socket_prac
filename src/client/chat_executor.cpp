@@ -38,7 +38,7 @@ void chat_executor::execute(const command_codec::command& cmd){
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
-
+            
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_response>){
