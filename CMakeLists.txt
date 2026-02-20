@@ -31,6 +31,9 @@ target_include_directories(socket_prac PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
 
+find_package(libpqxx CONFIG REQUIRED)
+target_link_libraries(socket_prac PUBLIC libpqxx::pqxx)
+
 add_executable(server apps/server.cpp)
 target_link_libraries(server PRIVATE socket_prac)
 
