@@ -20,4 +20,5 @@ public:
 
     std::expected<void, error_code> ping() noexcept;
     std::expected<bool, error_code> login(std::string_view id, std::string_view pw) noexcept;
+    std::expected<bool, error_code> signup(std::string_view id, std::string_view pw) noexcept;
 };

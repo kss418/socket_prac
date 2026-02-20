@@ -10,6 +10,8 @@ namespace command_codec{
     struct cmd_say{ std::string text; };
     struct cmd_nick{ std::string nick; };
     struct cmd_response{ std::string text; };
+    struct cmd_login{ std::string id, pw; };
+    struct cmd_register{ std::string id, pw; };
 
     enum class decode_error : int{
         empty_line = 1,
@@ -21,7 +23,7 @@ namespace command_codec{
         std::string_view cmd;
         std::vector<std::string_view> args;
     };
-    using command = std::variant<cmd_say, cmd_nick, cmd_response>;
+    using command = std::variant<cmd_say, cmd_nick, cmd_response, cmd_login, cmd_register>;
 
     decode_info decode_line(std::string_view line);
     std::string_view erase_delimeter(std::string_view line);

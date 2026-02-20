@@ -1,10 +1,12 @@
 #pragma once
 #include "net/io_helper.hpp"
 #include "core/error_code.hpp"
+#include <atomic>
 
 class chat_client{
     socket_info si{};
     unique_fd server_fd;
+    std::atomic_bool logged_in = false;
 public:
     chat_client(const chat_client&) = delete;
     chat_client& operator=(const chat_client&) = delete;

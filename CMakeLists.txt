@@ -27,6 +27,7 @@ add_library(socket_prac
     src/core/thread_pool.cpp
     src/database/db_connector.cpp
     src/database/db_service.cpp
+    src/database/db_executor.cpp
 )
 
 target_include_directories(socket_prac PUBLIC

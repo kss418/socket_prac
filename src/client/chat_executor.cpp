@@ -42,6 +42,12 @@ void chat_executor::execute(const command_codec::command& cmd){
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_response>){
+            if(c.text == "login success"){
+                logged_in.store(true);
+            }
+            else if(c.text == "login failed"){
+                logged_in.store(false);
+            }
             std::cout << c.text << "\n";
         }
     }, cmd);

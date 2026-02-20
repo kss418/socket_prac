@@ -47,6 +47,8 @@ std::string command_codec::encode(const command& cmd){
         if constexpr (std::is_same_v<T, cmd_nick>) return "nick\r" + c.nick + "\n";
         if constexpr (std::is_same_v<T, cmd_say>) return "say\r" + c.text + "\n";
         if constexpr (std::is_same_v<T, cmd_response>) return "response\r" + c.text + "\n";
+        if constexpr (std::is_same_v<T, cmd_login>) return "login\r" + c.id + "\r" + c.pw + "\n";
+        if constexpr (std::is_same_v<T, cmd_register>) return "register\r" + c.id + "\r" + c.pw + "\n";
     }, cmd);    
 }
 
@@ -78,6 +80,20 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_response{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "login"){
+        if(info.args.size() != 2){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_login{std::string(info.args[0]), std::string(info.args[1])};
+    }
+
+    if(info.cmd == "register"){
+        if(info.args.size() != 2){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_register{std::string(info.args[0]), std::string(info.args[1])};
     }
 
     return std::unexpected(error_code::from_decode(decode_error::invalid_command));

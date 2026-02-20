@@ -1,4 +1,5 @@
 #include "net/fd_helper.hpp"
+#include <fcntl.h>
 
 std::expected<unique_fd, error_code> make_server_fd(addrinfo* head){
     int ec = 0;
@@ -6,7 +7,20 @@ std::expected<unique_fd, error_code> make_server_fd(addrinfo* head){
         unique_fd fd(::socket(p->ai_family, p->ai_socktype, p->ai_protocol));
         if(!fd){ ec = errno; continue; }
 
-        if(::connect(fd.get(), p->ai_addr, p->ai_addrlen) == 0) return fd;
+        if(::connect(fd.get(), p->ai_addr, p->ai_addrlen) == 0){
+            int flags = ::fcntl(fd.get(), F_GETFL, 0);
+            if(flags == -1){
+                ec = errno;
+                continue;
+            }
+
+            if(::fcntl(fd.get(), F_SETFL, flags | O_NONBLOCK) == -1){
+                ec = errno;
+                continue;
+            }
+
+            return fd;
+        }
         ec = errno;
     }
 

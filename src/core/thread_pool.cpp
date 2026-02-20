@@ -11,6 +11,10 @@ thread_pool::thread_pool(std::size_t sz){
     }
 }
 
+bool thread_pool::is_pool_command(const command_codec::command& cmd) noexcept{
+    return false;
+}
+
 void thread_pool::stop(){
     {
         std::lock_guard<std::mutex> lock(mtx);
@@ -67,6 +71,14 @@ void thread_pool::execute(const task& t){
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_response>){
+            
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_login>){
+            
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_register>){
             
         }
     }, cmd);

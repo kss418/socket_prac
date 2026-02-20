@@ -22,12 +22,13 @@ std::expected <void, error_code> chat_client::connect(const char* ip, const char
 
     server_fd = std::move(*server_fd_exp);
     si = {};
+    logged_in.store(false);
     return {};
 }
 
 std::expected <void, error_code> chat_client::run(){
-    chat_executor executor;
-    chat_io_worker io_worker(si, server_fd, executor);
+    chat_executor executor(logged_in);
+    chat_io_worker io_worker(si, server_fd, executor, logged_in);
 
     std::mutex state_mtx;
     std::condition_variable state_cv;

@@ -30,6 +30,7 @@ public:
     thread_pool(const thread_pool&) = delete;
     thread_pool& operator=(const thread_pool&) = delete;
 
+    static bool is_pool_command(const command_codec::command& cmd) noexcept;
     void stop();
     bool enqueue(command_codec::command cmd, epoll_registry& reg, int fd);
 };

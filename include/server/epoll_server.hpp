@@ -7,6 +7,7 @@
 #include "server/epoll_acceptor.hpp"
 #include "protocol/command_codec.hpp"
 #include "core/thread_pool.hpp"
+#include "database/db_executor.hpp"
 #include <stop_token>
 
 class db_service;
@@ -15,7 +16,7 @@ class epoll_server{
     epoll_registry registry;
     epoll_listener listener;
     thread_pool pool{};
-    db_service& db;
+    db_executor db_pool;
 
     void handle_send(int fd, socket_info& si);
     bool handle_recv(int fd, socket_info& si, uint32_t event);

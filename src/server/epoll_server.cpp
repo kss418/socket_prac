@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <sys/socket.h>
 
 std::expected <epoll_server, error_code> epoll_server::create(const char* port, db_service& db){
@@ -39,7 +40,7 @@ std::expected <epoll_server, error_code> epoll_server::create(const char* port, 
 
 epoll_server::epoll_server(
     epoll_registry registry, epoll_listener listener, db_service& db
-) : registry(std::move(registry)), listener(std::move(listener)), db(db){}
+) : registry(std::move(registry)), listener(std::move(listener)), db_pool(db){}
 
 std::expected <void, error_code> epoll_server::run(){
     std::stop_source stop_source;
@@ -172,5 +173,28 @@ bool epoll_server::handle_execute(int fd){
     }
 
     auto cmd = std::move(*dec_exp);
-    return pool.enqueue(cmd, registry, fd);
+    if(db_executor::is_db_command(cmd)){
+        return db_pool.enqueue(std::move(cmd), registry, fd);
+    }
+
+    if(thread_pool::is_pool_command(cmd)){
+        return pool.enqueue(std::move(cmd), registry, fd);
+    }
+
+    std::visit([this, fd](auto&& c){
+        using T = std::decay_t<decltype(c)>;
+        if constexpr (std::is_same_v<T, command_codec::cmd_say>){
+            registry.request_broadcast(fd, command_codec::cmd_response{c.text});
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
+            registry.request_change_nickname(fd, c.nick);
+        }
+
+        if constexpr (std::is_same_v<T, command_codec::cmd_response>){
+            registry.request_send(fd, command_codec::cmd_response{c.text});
+        }
+    }, std::move(cmd));
+
+    return true;
 }

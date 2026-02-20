@@ -3,6 +3,7 @@
 #include "core/error_code.hpp"
 #include "core/unique_fd.hpp"
 #include "net/io_helper.hpp"
+#include <atomic>
 #include <expected>
 #include <stop_token>
 #include <string>
@@ -17,6 +18,7 @@ class chat_io_worker{
     socket_info& si;
     unique_fd& server_fd;
     chat_executor& executor;
+    std::atomic_bool& logged_in;
     recv_buffer stdin_buf;
 
     static parsed_command parse(const std::string& line);
@@ -27,8 +29,10 @@ class chat_io_worker{
     void execute(const std::string& line);
     void say(const std::string& line);
     void change_nickname(const std::string& nick);
+    void login(const std::string& id, const std::string& pw);
+    void signup(const std::string& id, const std::string& pw);
 public:
-    chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor);
+    chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in);
 
     chat_io_worker(const chat_io_worker&) = delete;
     chat_io_worker& operator=(const chat_io_worker&) = delete;

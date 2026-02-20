@@ -9,8 +9,8 @@
 #include <unistd.h>
 
 chat_io_worker::chat_io_worker(
-    socket_info& si, unique_fd& server_fd, chat_executor& executor
-) : si(si), server_fd(server_fd), executor(executor){}
+    socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in
+) : si(si), server_fd(server_fd), executor(executor), logged_in(logged_in){}
 
 chat_io_worker::parsed_command chat_io_worker::parse(const std::string& line){
     parsed_command parsed{};
@@ -126,19 +126,46 @@ std::expected<bool, error_code> chat_io_worker::send_stdin(){
 
 void chat_io_worker::execute(const std::string& line){
     if(line.empty()) return;
-    if(line[0] != '/'){
-        say(line);
+    parsed_command parsed = parse(line);
+    if(parsed.cmd.empty()) return;
+
+    if(!logged_in.load() && parsed.cmd != "/login" && parsed.cmd != "/register"){
+        std::cout << "login first: /login <id> <pw> or /register <id> <pw>" << "\n";
         return;
     }
 
-    parsed_command parsed = parse(line);
-    if(parsed.cmd.empty()) return;
+    if(parsed.cmd[0] != '/'){
+        say(line);
+        return;
+    }
     
     if(parsed.cmd == "/nick"){
-        if(parsed.args.size() != 1) return;
+        if(parsed.args.size() != 1){
+            std::cout << "/nick <nickname>" << "\n";
+            return;
+        }
         change_nickname(parsed.args[0]);
         return;
     }
+
+    if(parsed.cmd == "/login"){
+        if(parsed.args.size() != 2){
+            std::cout << "/login <id> <pw>" << "\n";
+            return;
+        }
+        login(parsed.args[0], parsed.args[1]);
+        return;
+    }
+
+    if(parsed.cmd == "/register"){
+        if(parsed.args.size() != 2){
+            std::cout << "/register <id> <pw>" << "\n";
+            return;
+        }
+        signup(parsed.args[0], parsed.args[1]);
+        return;
+    }
+
     else{
         std::cout << "unknown command" << "\n";
     }
@@ -150,4 +177,12 @@ void chat_io_worker::say(const std::string& line){
 
 void chat_io_worker::change_nickname(const std::string& nick){
     si.send.append(command_codec::cmd_nick{nick});
+}
+
+void chat_io_worker::login(const std::string& id, const std::string& pw){
+    si.send.append(command_codec::cmd_login{id, pw});
+}
+
+void chat_io_worker::signup(const std::string& id, const std::string& pw){
+    si.send.append(command_codec::cmd_register{id, pw});
 }
