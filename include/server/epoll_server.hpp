@@ -9,10 +9,13 @@
 #include "core/thread_pool.hpp"
 #include <stop_token>
 
+class db_service;
+
 class epoll_server{
     epoll_registry registry;
     epoll_listener listener;
     thread_pool pool{};
+    db_service& db;
 
     void handle_send(int fd, socket_info& si);
     bool handle_recv(int fd, socket_info& si, uint32_t event);
@@ -26,8 +29,8 @@ public:
     epoll_server(epoll_server&& other) noexcept = delete;
     epoll_server& operator=(epoll_server&& other) noexcept = delete;
 
-    static std::expected <epoll_server, error_code> create(const char* port);
-    epoll_server(epoll_registry registry, epoll_listener listener);
+    static std::expected <epoll_server, error_code> create(const char* port, db_service& db);
+    epoll_server(epoll_registry registry, epoll_listener listener, db_service& db);
     std::expected <void, error_code> run();
     std::expected <void, error_code> run(const std::stop_token& stop_token);
 };

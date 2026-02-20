@@ -1,4 +1,5 @@
 #include "server/epoll_server.hpp"
+#include "database/db_service.hpp"
 #include "net/addr.hpp"
 #include "reactor/epoll_utility.hpp"
 #include "protocol/line_parser.hpp"
@@ -10,7 +11,7 @@
 #include <thread>
 #include <sys/socket.h>
 
-std::expected <epoll_server, error_code> epoll_server::create(const char* port){
+std::expected <epoll_server, error_code> epoll_server::create(const char* port, db_service& db){
     auto addr_exp = get_addr_server(port);
     if(!addr_exp){
         handle_error("create/get_addr_server failed", addr_exp);
@@ -31,12 +32,14 @@ std::expected <epoll_server, error_code> epoll_server::create(const char* port){
 
     epoll_registry registry(std::move(*wakeup_exp));
     epoll_listener listener = std::move(*listen_fd_exp);
-    return std::expected<epoll_server, error_code>(std::in_place, std::move(registry), std::move(listener));
+    return std::expected<epoll_server, error_code>(
+        std::in_place, std::move(registry), std::move(listener), db
+    );
 }
 
 epoll_server::epoll_server(
-    epoll_registry registry, epoll_listener listener
-) : registry(std::move(registry)), listener(std::move(listener)){}
+    epoll_registry registry, epoll_listener listener, db_service& db
+) : registry(std::move(registry)), listener(std::move(listener)), db(db){}
 
 std::expected <void, error_code> epoll_server::run(){
     std::stop_source stop_source;

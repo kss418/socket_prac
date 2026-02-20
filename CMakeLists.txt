@@ -25,6 +25,8 @@ add_library(socket_prac
     src/protocol/command_codec.cpp
     src/protocol/line_parser.cpp
     src/core/thread_pool.cpp
+    src/database/db_connector.cpp
+    src/database/db_service.cpp
 )
 
 target_include_directories(socket_prac PUBLIC
