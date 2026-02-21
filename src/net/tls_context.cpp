@@ -13,7 +13,11 @@ std::expected <void, error_code> tls_context::set_common_options(SSL_CTX* ctx){
         return std::unexpected(error_code::from_errno(EPROTO));
     }
 
-    ::SSL_CTX_set_options(ctx, SSL_OP_NO_COMPRESSION);
+    long options = SSL_OP_NO_COMPRESSION;
+#ifdef SSL_OP_IGNORE_UNEXPECTED_EOF
+    options |= SSL_OP_IGNORE_UNEXPECTED_EOF;
+#endif
+    ::SSL_CTX_set_options(ctx, options);
     ::SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     return {};
 }

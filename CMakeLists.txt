@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(socket_prac
     src/core/error_code.cpp
+    src/core/config_loader.cpp
     src/core/unique_fd.cpp
     src/net/addr.cpp
     src/net/fd_helper.cpp
@@ -41,7 +42,9 @@ find_package(OpenSSL REQUIRED)
 target_link_libraries(socket_prac PUBLIC libpqxx::pqxx OpenSSL::SSL OpenSSL::Crypto)
 
 add_executable(server apps/server.cpp)
+target_compile_definitions(server PRIVATE PROJECT_ROOT_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(server PRIVATE socket_prac)
 
 add_executable(client apps/client.cpp)
+target_compile_definitions(client PRIVATE PROJECT_ROOT_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(client PRIVATE socket_prac)

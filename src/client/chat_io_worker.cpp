@@ -33,6 +33,46 @@ chat_io_worker::parsed_command chat_io_worker::parse(const std::string& line){
     return parsed;
 }
 
+short chat_io_worker::socket_events() const{
+    short events = POLLERR | POLLHUP;
+    if(!si.tls.is_handshake_done()){
+        if(si.tls.needs_write()) events |= POLLOUT;
+        if(si.tls.needs_read() || !si.tls.needs_write()) events |= POLLIN;
+        return events;
+    }
+
+    events |= POLLIN;
+    if(si.send.has_pending() || si.tls.needs_write()) events |= POLLOUT;
+    return events;
+}
+
+std::expected<void, error_code> chat_io_worker::progress_tls_handshake(){
+    if(si.tls.is_handshake_done()){
+        if(peer_verified) return {};
+        auto verify_exp = si.tls.verify_peer();
+        if(!verify_exp) return std::unexpected(verify_exp.error());
+        peer_verified = true;
+        return {};
+    }
+
+    auto hs_exp = si.tls.handshake();
+    if(!hs_exp) return std::unexpected(hs_exp.error());
+    if(hs_exp->closed) return std::unexpected(error_code::from_errno(ECONNRESET));
+
+    if(!si.tls.is_handshake_done()) return {};
+    auto verify_exp = si.tls.verify_peer();
+    if(!verify_exp) return std::unexpected(verify_exp.error());
+    peer_verified = true;
+    return {};
+}
+
+std::expected<void, error_code> chat_io_worker::flush_pending_send(){
+    if(!si.send.has_pending()) return {};
+    auto fs_exp = flush_send(si);
+    if(!fs_exp) return std::unexpected(fs_exp.error());
+    return {};
+}
+
 std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
     std::stop_callback on_stop(stop_token, [this](){
         ::shutdown(server_fd.get(), SHUT_RDWR);
@@ -40,10 +80,14 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
 
     std::array<pollfd, 2> fds{{
         { .fd = STDIN_FILENO, .events = POLLIN, .revents = 0 },
-        { .fd = server_fd.get(), .events = POLLIN | POLLHUP | POLLERR, .revents = 0 }
+        { .fd = server_fd.get(), .events = socket_events(), .revents = 0 }
     }};
 
+    auto hs_init_exp = progress_tls_handshake();
+    if(!hs_init_exp) return std::unexpected(hs_init_exp.error());
+
     while(!stop_token.stop_requested()){
+        fds[1].events = socket_events();
         int size = ::poll(fds.data(), fds.size(), -1);
         if(size < 0){
             int ec = errno;
@@ -68,7 +112,21 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             return std::unexpected(error_code::from_errno(so_error));
         }
 
-        if(fds[1].revents & (POLLIN | POLLHUP)){
+        if(fds[1].revents & (POLLIN | POLLOUT | POLLHUP)){
+            auto hs_exp = progress_tls_handshake();
+            if(!hs_exp) return std::unexpected(hs_exp.error());
+
+            if((fds[1].revents & POLLHUP) && !si.tls.is_handshake_done()){
+                return std::unexpected(error_code::from_errno(ECONNRESET));
+            }
+        }
+
+        if(si.tls.is_handshake_done() && (fds[1].revents & POLLOUT)){
+            auto flush_exp = flush_pending_send();
+            if(!flush_exp) return std::unexpected(flush_exp.error());
+        }
+
+        if(si.tls.is_handshake_done() && (fds[1].revents & (POLLIN | POLLHUP))){
             auto recv_exp = recv_socket();
             if(!recv_exp) return std::unexpected(recv_exp.error());
 
@@ -89,11 +147,16 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
         fds[1].revents = 0;
     }
 
+    if(si.tls.is_handshake_done() && !si.tls.is_closed()){
+        auto shutdown_exp = si.tls.shutdown();
+        if(!shutdown_exp) handle_error("chat_io_worker/tls shutdown failed", shutdown_exp);
+    }
+
     return {};
 }
 
 std::expected<bool, error_code> chat_io_worker::recv_socket(){
-    auto dr_exp = drain_recv(server_fd.get(), si);
+    auto dr_exp = drain_recv(si);
     if(!dr_exp) return std::unexpected(dr_exp.error());
     return dr_exp->closed;
 }
@@ -117,7 +180,9 @@ std::expected<bool, error_code> chat_io_worker::send_stdin(){
         execute(*line);
         if(!had_pending && !si.send.has_pending()) continue;
 
-        auto fs_exp = flush_send(server_fd.get(), si);
+        if(!si.tls.is_handshake_done()) continue;
+
+        auto fs_exp = flush_send(si);
         if(!fs_exp) return std::unexpected(fs_exp.error());
     }
 

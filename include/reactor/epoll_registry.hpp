@@ -8,6 +8,8 @@
 #include <mutex>
 #include <variant>
 
+class tls_context;
+
 class epoll_registry : public epoll_wakeup{
     struct register_command{
         unique_fd fd;
@@ -38,6 +40,7 @@ class epoll_registry : public epoll_wakeup{
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
     std::unordered_map <int, socket_info> infos;
+    tls_context& tls_ctx;
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);
     std::expected <void, error_code> unregister_fd(int fd);
@@ -58,11 +61,10 @@ public:
     epoll_registry(const epoll_registry&) = delete;
     epoll_registry& operator=(const epoll_registry&) = delete;
 
-    epoll_registry(epoll_registry&& other) noexcept;
-    epoll_registry& operator=(epoll_registry&& other) noexcept;
+    epoll_registry(epoll_registry&& other) noexcept = delete;
+    epoll_registry& operator=(epoll_registry&& other) noexcept = delete;
 
-    epoll_registry() = default;
-    explicit epoll_registry(epoll_wakeup wakeup) : epoll_wakeup(std::move(wakeup)){}
+    epoll_registry(epoll_wakeup wakeup, tls_context& tls_ctx);
 
     void request_register(unique_fd fd, uint32_t interest);
     void request_unregister(int fd);

@@ -2,6 +2,7 @@
 #include "core/error_code.hpp"
 #include "core/unique_fd.hpp"
 #include "net/fd_helper.hpp"
+#include "net/tls_session.hpp"
 #include "protocol/command_codec.hpp"
 #include <string_view>
 #include <string>
@@ -44,6 +45,7 @@ public:
 struct socket_info{
     recv_buffer recv;
     send_buffer send;
+    tls_session tls;
     uint32_t interest = 0;
     unique_fd ufd;
     endpoint ep;
@@ -55,5 +57,5 @@ struct recv_info{
     bool closed = 0;
 };
 
-std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si);
-std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si);
+std::expected <std::size_t, error_code> flush_send(socket_info& si);
+std::expected <recv_info, error_code> drain_recv(socket_info& si);
