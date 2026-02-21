@@ -78,6 +78,7 @@ std::expected <tls_session, error_code> tls_session::create_client(
 }
 
 std::expected <tls_io_result, error_code> tls_session::handshake(){
+    if(ssl == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
     if(handshake_done){
         tls_io_result ret{};
         apply_state(ret);
@@ -98,6 +99,7 @@ std::expected <tls_io_result, error_code> tls_session::handshake(){
 }
 
 std::expected <tls_io_result, error_code> tls_session::read(char* dst, std::size_t cap){
+    if(ssl == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
     if(cap == 0){
         tls_io_result ret{};
         apply_state(ret);
@@ -118,6 +120,7 @@ std::expected <tls_io_result, error_code> tls_session::read(char* dst, std::size
 }
 
 std::expected <tls_io_result, error_code> tls_session::write(const char* src, std::size_t len){
+    if(ssl == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
     if(len == 0){
         tls_io_result ret{};
         apply_state(ret);
@@ -137,7 +140,31 @@ std::expected <tls_io_result, error_code> tls_session::write(const char* src, st
     return io_exp;
 }
 
+std::expected <void, error_code> tls_session::shutdown(){
+    if(ssl == nullptr) return {};
+
+    int rc = ::SSL_shutdown(ssl.get());
+    if(rc == 1) return {};
+    if(rc == 0) return {};
+
+    int ssl_error = ::SSL_get_error(ssl.get(), rc);
+    if(ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE){
+        return {};
+    }
+
+    if(ssl_error == SSL_ERROR_ZERO_RETURN) return {};
+
+    if(ssl_error == SSL_ERROR_SYSCALL){
+        int ec = errno;
+        if(ec == 0) return {};
+        return std::unexpected(error_code::from_errno(ec));
+    }
+
+    return std::unexpected(error_code::from_errno(EPROTO));
+}
+
 std::expected <void, error_code> tls_session::verify_peer() const{
+    if(ssl == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
     X509* cert = ::SSL_get1_peer_certificate(ssl.get());
     if(cert == nullptr) return std::unexpected(error_code::from_errno(EPERM));
     ::X509_free(cert);

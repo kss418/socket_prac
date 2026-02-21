@@ -7,7 +7,15 @@
 #include <optional>
 #include <thread>
 
-std::expected <void, error_code> chat_client::connect(const char* ip, const char* port){
+chat_client::chat_client(socket_info si, unique_fd server_fd, tls_context tls_ctx) :
+    si(std::move(si)),
+    server_fd(std::move(server_fd)),
+    tls_ctx(std::move(tls_ctx)),
+    logged_in(false){}
+
+std::expected <chat_client, error_code> chat_client::create(
+    const char* ip, const char* port, std::string_view ca_file_path
+){
     auto addr_exp = get_addr_client(ip, port);
     if(!addr_exp){
         handle_error("get_addr_client failed", addr_exp);
@@ -20,10 +28,26 @@ std::expected <void, error_code> chat_client::connect(const char* ip, const char
         return std::unexpected(server_fd_exp.error());
     }
 
-    server_fd = std::move(*server_fd_exp);
-    si = {};
-    logged_in.store(false);
-    return {};
+    auto tls_ctx_exp = tls_context::create_client(ca_file_path);
+    if(!tls_ctx_exp){
+        handle_error("create_client tls_context failed", tls_ctx_exp);
+        return std::unexpected(tls_ctx_exp.error());
+    }
+
+    tls_context tls_ctx = std::move(*tls_ctx_exp);
+
+    auto tls_exp = tls_session::create_client(tls_ctx, server_fd_exp->get(), ip);
+    if(!tls_exp){
+        handle_error("create_client tls_session failed", tls_exp);
+        return std::unexpected(tls_exp.error());
+    }
+
+    socket_info si{};
+    si.tls = std::move(*tls_exp);
+
+    return std::expected<chat_client, error_code>(
+        std::in_place, std::move(si), std::move(*server_fd_exp), std::move(tls_ctx)
+    );
 }
 
 std::expected <void, error_code> chat_client::run(){

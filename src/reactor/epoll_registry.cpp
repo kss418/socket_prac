@@ -1,24 +1,11 @@
 #include "reactor/epoll_registry.hpp"
+#include "net/tls_context.hpp"
 #include "reactor/epoll_utility.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
 
-epoll_registry::epoll_registry(epoll_registry&& other) noexcept{
-    std::scoped_lock lock(other.cmd_mtx);
-    epfd = std::move(other.epfd);
-    wake_fd = std::move(other.wake_fd);
-    cmd_q = std::move(other.cmd_q);
-    infos = std::move(other.infos);
-}
-
-epoll_registry& epoll_registry::operator=(epoll_registry&& other) noexcept{
-    if(this == &other) return *this;
-    std::scoped_lock lock(cmd_mtx, other.cmd_mtx);
-    epoll_wakeup::operator=(std::move(other));
-    cmd_q = std::move(other.cmd_q);
-    infos = std::move(other.infos);
-    return *this;
-}
+epoll_registry::epoll_registry(epoll_wakeup wakeup, tls_context& tls_ctx) :
+    epoll_wakeup(std::move(wakeup)), tls_ctx(tls_ctx){}
 
 std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd, uint32_t interest){
     int fd = client_fd.get();
@@ -55,14 +42,24 @@ std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd,
         handle_error("register_fd/add_fd failed", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
     }
-    
-    socket_info si{};
-    si.ufd = std::move(client_fd);
-    si.ep = std::move(*ep_exp);
-    si.interest = interest;
 
-    infos.emplace(fd, std::move(si));
-    std::cout << to_string(si.ep) << " is connected" << "\n";
+    auto tls_exp = tls_session::create_server(tls_ctx, fd);
+    if(!tls_exp){
+        handle_error("register_fd/tls_session::create_server failed", tls_exp);
+        return std::unexpected(tls_exp.error());
+    }
+    
+    auto [it, inserted] = infos.emplace(
+        fd,
+        socket_info{
+            .tls = std::move(*tls_exp),
+            .interest = interest,
+            .ufd = std::move(client_fd),
+            .ep = std::move(*ep_exp)
+        }
+    );
+
+    std::cout << to_string(it->second.ep) << " is connected" << "\n";
     return fd;
 }
 

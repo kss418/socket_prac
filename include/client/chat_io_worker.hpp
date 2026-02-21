@@ -20,8 +20,12 @@ class chat_io_worker{
     chat_executor& executor;
     std::atomic_bool& logged_in;
     recv_buffer stdin_buf;
+    bool peer_verified = false;
 
     static parsed_command parse(const std::string& line);
+    short socket_events() const;
+    std::expected<void, error_code> progress_tls_handshake();
+    std::expected<void, error_code> flush_pending_send();
 
     std::expected<bool, error_code> recv_socket();
     std::expected<bool, error_code> send_stdin();

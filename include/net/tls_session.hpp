@@ -28,6 +28,7 @@ class tls_session{
     std::expected <tls_io_result, error_code> from_ssl_error(int ssl_error, std::size_t byte);
     void apply_state(const tls_io_result& io) noexcept;
 public:
+    tls_session() noexcept = default;
     tls_session(const tls_session&) = delete;
     tls_session& operator=(const tls_session&) = delete;
 
@@ -42,6 +43,7 @@ public:
     std::expected <tls_io_result, error_code> handshake();
     std::expected <tls_io_result, error_code> read(char* dst, std::size_t cap);
     std::expected <tls_io_result, error_code> write(const char* src, std::size_t len);
+    std::expected <void, error_code> shutdown();
     std::expected <void, error_code> verify_peer() const;
 
     bool is_handshake_done() const noexcept;

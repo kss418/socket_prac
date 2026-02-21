@@ -85,48 +85,56 @@ std::string recv_buffer::take_all(){
     return out;
 }
 
-std::expected <std::size_t, error_code> flush_send(int fd, socket_info& si){
+std::expected <std::size_t, error_code> flush_send(socket_info& si){
+    if(si.tls.get() == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
+
     std::size_t send_byte = 0;
     while(si.send.has_pending()){
-        ssize_t now = ::send(fd, si.send.current_data(), si.send.remaining(), MSG_NOSIGNAL);
-        if(now == -1){
-            int ec = errno;
-            if(ec == EINTR) continue;
-            if(ec == EAGAIN || ec == EWOULDBLOCK){
-                si.send.compact_if_needed();
-                return send_byte;
-            }
-            return std::unexpected(error_code::from_errno(ec));
+        auto wr_exp = si.tls.write(si.send.current_data(), si.send.remaining());
+        if(!wr_exp) return std::unexpected(wr_exp.error());
+
+        const tls_io_result& wr = *wr_exp;
+        if(wr.byte > 0){
+            si.send.advance(wr.byte);
+            send_byte += wr.byte;
         }
 
-        if(now == 0) return std::unexpected(error_code::from_errno(EPIPE));
-        si.send.advance(static_cast<std::size_t>(now));
-        send_byte += static_cast<std::size_t>(now);
+        if(wr.closed) return std::unexpected(error_code::from_errno(EPIPE));
+        if(wr.want_read || wr.want_write){
+            si.send.compact_if_needed();
+            return send_byte;
+        }
+
+        if(wr.byte == 0) return std::unexpected(error_code::from_errno(EPROTO));
     }
 
     si.send.clear_if_done();
     return send_byte;
 }
 
-std::expected <recv_info, error_code> drain_recv(int fd, socket_info& si){
+std::expected <recv_info, error_code> drain_recv(socket_info& si){
+    if(si.tls.get() == nullptr) return std::unexpected(error_code::from_errno(EINVAL));
+
     recv_info ret;
     std::array <char, BUF_SIZE> tmp{};
     while(true){
-        ssize_t now = ::recv(fd, tmp.data(), tmp.size(), 0);
-        if(now > 0){
-            si.recv.append(tmp.data(), static_cast<std::size_t>(now));
-            ret.byte += static_cast<std::size_t>(now);
+        auto rd_exp = si.tls.read(tmp.data(), tmp.size());
+        if(!rd_exp) return std::unexpected(rd_exp.error());
+
+        const tls_io_result& rd = *rd_exp;
+        if(rd.byte > 0){
+            si.recv.append(tmp.data(), rd.byte);
+            ret.byte += rd.byte;
+            if(rd.want_read || rd.want_write) return ret;
             continue;
         }
 
-        if(now == 0){
+        if(rd.closed){
             ret.closed = true;
             return ret;
         }
 
-        int ec = errno;
-        if(ec == EINTR) continue;
-        if(ec == EAGAIN || ec == EWOULDBLOCK) return ret;
-        return std::unexpected(error_code::from_errno(ec));
+        if(rd.want_read || rd.want_write) return ret;
+        return ret;
     }
 }
