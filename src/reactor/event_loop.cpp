@@ -6,9 +6,9 @@ event_loop::event_loop(epoll_registry& registry) : registry(registry){}
 
 std::expected<void, error_code> event_loop::run(
     const std::stop_token& stop_token,
-    const std::function<bool(int, socket_info&, uint32_t)>& on_recv,
-    const std::function<void(int, socket_info&)>& on_send,
-    const std::function<bool(int, socket_info&)>& on_execute,
+    const std::function<bool(socket_info&, uint32_t)>& on_recv,
+    const std::function<void(socket_info&)>& on_send,
+    const std::function<bool(socket_info&)>& on_execute,
     const std::function<void(int, uint32_t)>& on_client_error
 ){
     std::stop_callback on_stop(stop_token, [this](){ registry.request_wakeup(); });
@@ -37,12 +37,12 @@ std::expected<void, error_code> event_loop::run(
             auto& si = it->second;
 
             bool keep_alive = true;
-            if(is_read_event(event)) keep_alive = on_recv(fd, si, event);
+            if(is_read_event(event)) keep_alive = on_recv(si, event);
             if(!keep_alive) continue;
 
-            if(is_write_event(event)) on_send(fd, si);
+            if(is_write_event(event)) on_send(si);
             if(is_read_event(event)){
-                while(on_execute(fd, si));
+                while(on_execute(si));
             }
         }
     }

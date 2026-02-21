@@ -20,13 +20,13 @@ class epoll_server{
     thread_pool pool{};
     db_executor db_pool;
 
-    std::expected <void, error_code> sync_tls_interest(int fd, socket_info& si);
-    std::expected <void, error_code> progress_tls_handshake(int fd, socket_info& si);
-    void handle_send(int fd, socket_info& si);
-    bool handle_recv(int fd, socket_info& si, uint32_t event);
-    void handle_close(int fd, socket_info& si);
+    std::expected <void, error_code> sync_tls_interest(socket_info& si);
+    std::expected <void, error_code> progress_tls_handshake(socket_info& si);
+    void handle_send(socket_info& si);
+    bool handle_recv(socket_info& si, uint32_t event);
+    void handle_close(socket_info& si);
     void handle_client_error(int fd, uint32_t event);
-    bool handle_execute(int fd);
+    bool handle_execute(socket_info& si);
 public:
     epoll_server(const epoll_server&) = delete;
     epoll_server& operator=(const epoll_server&) = delete;

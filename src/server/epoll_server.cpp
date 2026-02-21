@@ -78,9 +78,9 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         event_loop loop(registry);
         auto run_exp = loop.run(
             st,
-            [this](int fd, socket_info& si, uint32_t event){ return handle_recv(fd, si, event); },
-            [this](int fd, socket_info& si){ handle_send(fd, si); },
-            [this](int fd, socket_info& si){ return handle_execute(fd); },
+            [this](socket_info& si, uint32_t event){ return handle_recv(si, event); },
+            [this](socket_info& si){ handle_send(si); },
+            [this](socket_info& si){ return handle_execute(si); },
             [this](int fd, uint32_t event){ handle_client_error(fd, event); }
         );
 
@@ -108,7 +108,8 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
     return {};
 }
 
-std::expected <void, error_code> epoll_server::sync_tls_interest(int fd, socket_info& si){
+std::expected <void, error_code> epoll_server::sync_tls_interest(socket_info& si){
+    int fd = si.ufd.get();
     uint32_t next_interest = si.interest;
     if(si.send.has_pending() || si.tls.needs_write()) next_interest |= EPOLLOUT;
     else next_interest &= ~EPOLLOUT;
@@ -119,7 +120,8 @@ std::expected <void, error_code> epoll_server::sync_tls_interest(int fd, socket_
     return {};
 }
 
-std::expected <void, error_code> epoll_server::progress_tls_handshake(int fd, socket_info& si){
+std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_info& si){
+    int fd = si.ufd.get();
     if(si.tls.get() == nullptr) return {};
     if(si.tls.is_handshake_done()) return {};
 
@@ -131,11 +133,11 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(int fd, so
     }
 
     if(hs_exp->closed){
-        handle_close(fd, si);
+        handle_close(si);
         return std::unexpected(error_code::from_errno(ECONNRESET));
     }
 
-    auto sync_exp = sync_tls_interest(fd, si);
+    auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
         handle_error(to_string(si.ep) + " run/sync tls interest failed", sync_exp);
         registry.request_unregister(fd);
@@ -145,8 +147,9 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(int fd, so
     return {};
 }
 
-void epoll_server::handle_send(int fd, socket_info& si){
-    auto hs_exp = progress_tls_handshake(fd, si);
+void epoll_server::handle_send(socket_info& si){
+    int fd = si.ufd.get();
+    auto hs_exp = progress_tls_handshake(si);
     if(!hs_exp) return;
     if(si.tls.get() != nullptr && !si.tls.is_handshake_done()) return;
 
@@ -157,15 +160,16 @@ void epoll_server::handle_send(int fd, socket_info& si){
         return; 
     }
 
-    auto sync_exp = sync_tls_interest(fd, si);
+    auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
         handle_error("run/handle_send/sync_tls_interest failed", sync_exp);
         registry.request_unregister(fd);
     }
 }
 
-bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
-    auto hs_exp = progress_tls_handshake(fd, si);
+bool epoll_server::handle_recv(socket_info& si, uint32_t event){
+    int fd = si.ufd.get();
+    auto hs_exp = progress_tls_handshake(si);
     if(!hs_exp) return false;
     if(si.tls.get() != nullptr && !si.tls.is_handshake_done()) return true;
 
@@ -180,7 +184,7 @@ bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     std::cout << to_string(si.ep) << " sends " << recv_info.byte 
         << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
 
-    auto sync_exp = sync_tls_interest(fd, si);
+    auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
         handle_error("run/handle_recv/sync_tls_interest failed", sync_exp);
         registry.request_unregister(fd);
@@ -188,14 +192,15 @@ bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     }
 
     if(recv_info.closed || event & EPOLLRDHUP){ // peer closed
-        handle_close(fd, si);
+        handle_close(si);
         return false;
     }
 
     return true;
 }
 
-void epoll_server::handle_close(int fd, socket_info& si){
+void epoll_server::handle_close(socket_info& si){
+    int fd = si.ufd.get();
     if(si.tls.is_handshake_done() && !si.tls.is_closed()){
         auto shutdown_exp = si.tls.shutdown();
         if(!shutdown_exp){
@@ -232,10 +237,9 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
     registry.request_unregister(fd);
 }
 
-bool epoll_server::handle_execute(int fd){
-    auto it = registry.find(fd);
-    if(it == registry.end()) return false;
-    auto line = line_parser::parse_line(it->second.recv);
+bool epoll_server::handle_execute(socket_info& si){
+    int fd = si.ufd.get();
+    auto line = line_parser::parse_line(si.recv);
     if(!line) return false;
 
     auto dec_exp = command_codec::decode(*line);
