@@ -12,6 +12,8 @@ add_library(socket_prac
     src/net/addr.cpp
     src/net/fd_helper.cpp
     src/net/io_helper.cpp
+    src/net/tls_context.cpp
+    src/net/tls_session.cpp
     src/reactor/epoll_wakeup.cpp
     src/reactor/epoll_utility.cpp
     src/reactor/epoll_registry.cpp
@@ -35,7 +37,8 @@ target_include_directories(socket_prac PUBLIC
 )
 
 find_package(libpqxx CONFIG REQUIRED)
-target_link_libraries(socket_prac PUBLIC libpqxx::pqxx)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(socket_prac PUBLIC libpqxx::pqxx OpenSSL::SSL OpenSSL::Crypto)
 
 add_executable(server apps/server.cpp)
 target_link_libraries(server PRIVATE socket_prac)
