@@ -147,6 +147,11 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
         fds[1].revents = 0;
     }
 
+    if(si.tls.is_handshake_done() && !si.tls.is_closed()){
+        auto shutdown_exp = si.tls.shutdown();
+        if(!shutdown_exp) handle_error("chat_io_worker/tls shutdown failed", shutdown_exp);
+    }
+
     return {};
 }
 

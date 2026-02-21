@@ -126,8 +126,6 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(int fd, so
     auto hs_exp = si.tls.handshake();
     if(!hs_exp){
         handle_error(to_string(si.ep) + " run/handshake failed", hs_exp);
-        auto shutdown_exp = si.tls.shutdown();
-        if(!shutdown_exp) handle_error("run/handshake/shutdown failed", shutdown_exp);
         registry.request_unregister(fd);
         return std::unexpected(hs_exp.error());
     }
@@ -155,8 +153,6 @@ void epoll_server::handle_send(int fd, socket_info& si){
     auto fs_exp = flush_send(si);
     if(!fs_exp){
         handle_error("run/handle_send/flush_send failed", fs_exp);
-        auto shutdown_exp = si.tls.shutdown();
-        if(!shutdown_exp) handle_error("run/handle_send/shutdown failed", shutdown_exp);
         registry.request_unregister(fd);
         return; 
     }
@@ -176,8 +172,6 @@ bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
     auto dr_exp = drain_recv(si);
     if(!dr_exp){
         handle_error(to_string(si.ep) + " run/handle_recv/drain_recv failed", dr_exp);
-        auto shutdown_exp = si.tls.shutdown();
-        if(!shutdown_exp) handle_error("run/handle_recv/shutdown failed", shutdown_exp);
         registry.request_unregister(fd);
         return false;
     }
@@ -202,9 +196,11 @@ bool epoll_server::handle_recv(int fd, socket_info& si, uint32_t event){
 }
 
 void epoll_server::handle_close(int fd, socket_info& si){
-    auto shutdown_exp = si.tls.shutdown();
-    if(!shutdown_exp){
-        handle_error("run/handle_close/tls shutdown failed", shutdown_exp);
+    if(si.tls.is_handshake_done() && !si.tls.is_closed()){
+        auto shutdown_exp = si.tls.shutdown();
+        if(!shutdown_exp){
+            handle_error("run/handle_close/tls shutdown failed", shutdown_exp);
+        }
     }
 
     std::cout << to_string(si.ep) << " is disconnected" << "\n";
@@ -213,7 +209,11 @@ void epoll_server::handle_close(int fd, socket_info& si){
 
 void epoll_server::handle_client_error(int fd, uint32_t event){
     auto it = registry.find(fd);
-    if(it != registry.end()){
+    if(it == registry.end()){
+        return;
+    }
+
+    if(it->second.tls.is_handshake_done()){
         auto shutdown_exp = it->second.tls.shutdown();
         if(!shutdown_exp) handle_error("run/handle_client_error/shutdown failed", shutdown_exp);
     }

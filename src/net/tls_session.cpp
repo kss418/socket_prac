@@ -25,7 +25,14 @@ std::expected <tls_io_result, error_code> tls_session::from_ssl_error(int ssl_er
 
     if(ssl_error == SSL_ERROR_SYSCALL){
         int ec = errno;
-        if(ec == 0) ec = EPROTO;
+        if(ec == 0 || ec == ECONNRESET || ec == EPIPE || ec == ENOTCONN){
+            return tls_io_result{
+                .byte = byte,
+                .closed = true,
+                .want_read = false,
+                .want_write = false
+            };
+        }
         return std::unexpected(error_code::from_errno(ec));
     }
 
