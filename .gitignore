@@ -8,3 +8,4 @@ certs/*.key.pem
 certs/*.csr.pem
 certs/*.srl
 certs/*.ext
+log/
