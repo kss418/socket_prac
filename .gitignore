@@ -3,3 +3,8 @@ build
 build-vcpkg
 vcpkg
 vcpkg_installed
+certs/
+certs/*.key.pem
+certs/*.csr.pem
+certs/*.srl
+certs/*.ext
