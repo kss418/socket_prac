@@ -10,9 +10,13 @@ namespace command_codec{
     enum class decode_error : int;
 }
 
+namespace config_loader{
+    enum class config_error : int;
+}
+
 class db_connector;
 
-enum class error_domain { errno_domain, gai_domain, decode_domain, db_domain };
+enum class error_domain { errno_domain, gai_domain, decode_domain, db_domain, config_domain };
 struct error_code{
     error_domain domain{};
     int code{0};
@@ -25,6 +29,8 @@ struct error_code{
     static error_code from_decode(command_codec::decode_error ec);
 
     static error_code from_db(int ec);
+    static error_code from_config(int ec);
+    static error_code from_config(config_loader::config_error ec);
 };
 
 std::string to_string(const error_code& ec);

@@ -8,6 +8,16 @@
 namespace config_loader{
     using config_map = std::unordered_map<std::string, std::string>;
 
+    enum class config_error : int{
+        file_not_found = 1,
+        malformed_line,
+        empty_key,
+        duplicate_key,
+        read_failed,
+        missing_required_key
+    };
+
+    std::string config_strerror(int code);
     std::string trim(std::string_view sv);
     bool is_comment_or_blank(std::string_view line);
     std::expected <config_map, error_code> load_key_value_file(std::string_view path);

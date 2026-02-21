@@ -1,7 +1,24 @@
 #include "core/config_loader.hpp"
 #include <cctype>
-#include <cerrno>
 #include <fstream>
+
+std::string config_loader::config_strerror(int code){
+    switch(static_cast<config_error>(code)){
+        case config_error::file_not_found:
+            return "config file not found";
+        case config_error::malformed_line:
+            return "config malformed line (expected key=value)";
+        case config_error::empty_key:
+            return "config key is empty";
+        case config_error::duplicate_key:
+            return "config duplicate key";
+        case config_error::read_failed:
+            return "config read failed";
+        case config_error::missing_required_key:
+            return "config missing required key";
+    }
+    return "unknown config error";
+}
 
 std::string config_loader::trim(std::string_view sv){
     std::size_t begin = 0;
@@ -27,7 +44,9 @@ bool config_loader::is_comment_or_blank(std::string_view line){
 
 std::expected <config_loader::config_map, error_code> config_loader::load_key_value_file(std::string_view path){
     std::ifstream in{std::string(path)};
-    if(!in.is_open()) return std::unexpected(error_code::from_errno(ENOENT));
+    if(!in.is_open()){
+        return std::unexpected(error_code::from_config(config_error::file_not_found));
+    }
 
     config_map cfg;
     std::string line;
@@ -36,23 +55,23 @@ std::expected <config_loader::config_map, error_code> config_loader::load_key_va
 
         std::size_t eq = line.find('=');
         if(eq == std::string::npos){
-            return std::unexpected(error_code::from_errno(EPROTO));
+            return std::unexpected(error_code::from_config(config_error::malformed_line));
         }
 
         std::string key = trim(std::string_view(line).substr(0, eq));
         std::string value = trim(std::string_view(line).substr(eq + 1));
         if(key.empty()){
-            return std::unexpected(error_code::from_errno(EINVAL));
+            return std::unexpected(error_code::from_config(config_error::empty_key));
         }
 
         auto [it, inserted] = cfg.emplace(std::move(key), std::move(value));
         if(!inserted){
-            return std::unexpected(error_code::from_errno(EEXIST));
+            return std::unexpected(error_code::from_config(config_error::duplicate_key));
         }
     }
 
     if(!in.eof() && in.fail()){
-        return std::unexpected(error_code::from_errno(EIO));
+        return std::unexpected(error_code::from_config(config_error::read_failed));
     }
 
     return cfg;
@@ -60,7 +79,9 @@ std::expected <config_loader::config_map, error_code> config_loader::load_key_va
 
 std::expected <std::string, error_code> config_loader::require(const config_map& cfg, std::string_view key){
     auto it = cfg.find(std::string(key));
-    if(it == cfg.end()) return std::unexpected(error_code::from_errno(ENOENT));
+    if(it == cfg.end()){
+        return std::unexpected(error_code::from_config(config_error::missing_required_key));
+    }
     return it->second;
 }
 
