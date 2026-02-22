@@ -35,6 +35,7 @@ class chat_io_worker{
     void change_nickname(const std::string& nick);
     void login(const std::string& id, const std::string& pw);
     void signup(const std::string& id, const std::string& pw);
+    void help();
 public:
     chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in);
 

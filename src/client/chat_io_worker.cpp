@@ -1,4 +1,5 @@
 #include "client/chat_io_worker.hpp"
+#include "client/console_output.hpp"
 #include "core/logger.hpp"
 #include "protocol/line_parser.hpp"
 #include <array>
@@ -203,8 +204,8 @@ void chat_io_worker::execute(const std::string& line){
     parsed_command parsed = parse(line);
     if(parsed.cmd.empty()) return;
 
-    if(!logged_in.load() && parsed.cmd != "/login" && parsed.cmd != "/register"){
-        std::cout << "login first: /login <id> <pw> or /register <id> <pw>" << "\n";
+    if(!logged_in.load() && parsed.cmd != "/login" && parsed.cmd != "/register" && parsed.cmd != "/help"){
+        client_console::print_line("login first: /login <id> <pw> or /register <id> <pw>");
         return;
     }
 
@@ -215,7 +216,7 @@ void chat_io_worker::execute(const std::string& line){
     
     if(parsed.cmd == "/nick"){
         if(parsed.args.size() != 1){
-            std::cout << "/nick <nickname>" << "\n";
+            client_console::print_line("/nick <nickname>");
             return;
         }
         change_nickname(parsed.args[0]);
@@ -224,7 +225,7 @@ void chat_io_worker::execute(const std::string& line){
 
     if(parsed.cmd == "/login"){
         if(parsed.args.size() != 2){
-            std::cout << "/login <id> <pw>" << "\n";
+            client_console::print_line("/login <id> <pw>");
             return;
         }
         login(parsed.args[0], parsed.args[1]);
@@ -233,15 +234,24 @@ void chat_io_worker::execute(const std::string& line){
 
     if(parsed.cmd == "/register"){
         if(parsed.args.size() != 2){
-            std::cout << "/register <id> <pw>" << "\n";
+            client_console::print_line("/register <id> <pw>");
             return;
         }
         signup(parsed.args[0], parsed.args[1]);
         return;
     }
 
+    if(parsed.cmd == "/help"){
+        if(parsed.args.size() != 0){
+            client_console::print_line("/help");
+            return;
+        }
+        help();
+        return;
+    }
+
     else{
-        std::cout << "unknown command" << "\n";
+        client_console::print_line("unknown command");
     }
 }
 
@@ -259,4 +269,14 @@ void chat_io_worker::login(const std::string& id, const std::string& pw){
 
 void chat_io_worker::signup(const std::string& id, const std::string& pw){
     si.send.append(command_codec::cmd_register{id, pw});
+}
+
+void chat_io_worker::help(){
+    std::lock_guard<std::mutex> lock(client_console::output_mutex());
+    std::cout << "commands:\n"
+              << "  /register <id> <pw>\n"
+              << "  /login <id> <pw>\n"
+              << "  /nick <nickname>\n"
+              << "  /help\n"
+              << "  <text> (send chat message)\n";
 }

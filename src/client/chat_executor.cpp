@@ -1,4 +1,5 @@
 #include "client/chat_executor.hpp"
+#include "client/console_output.hpp"
 #include <iostream>
 #include <type_traits>
 
@@ -48,7 +49,7 @@ void chat_executor::execute(const command_codec::command& cmd){
             else if(c.text == "login failed"){
                 logged_in.store(false);
             }
-            std::cout << c.text << "\n";
+            client_console::print_line(c.text);
         }
     }, cmd);
 }
