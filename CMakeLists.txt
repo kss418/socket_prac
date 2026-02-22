@@ -14,6 +14,7 @@ add_library(socket_prac
     src/net/addr.cpp
     src/net/fd_helper.cpp
     src/net/io_helper.cpp
+    src/net/tls_error.cpp
     src/net/tls_context.cpp
     src/net/tls_session.cpp
     src/reactor/epoll_wakeup.cpp

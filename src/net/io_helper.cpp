@@ -1,5 +1,6 @@
 #include "net/io_helper.hpp"
 #include "net/fd_helper.hpp"
+#include "net/tls_error.hpp"
 #include "protocol/line_parser.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
@@ -105,7 +106,9 @@ std::expected <std::size_t, error_code> flush_send(socket_info& si){
             return send_byte;
         }
 
-        if(wr.byte == 0) return std::unexpected(error_code::from_errno(EPROTO));
+        if(wr.byte == 0){
+            return std::unexpected(error_code::from_tls(tls::tls_error::protocol_error));
+        }
     }
 
     si.send.clear_if_done();
