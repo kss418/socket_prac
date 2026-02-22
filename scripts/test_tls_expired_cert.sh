@@ -67,6 +67,16 @@ contains() {
     fi
 }
 
+has_any_expired_tls_error() {
+    local file="$1"
+    if contains "tls.verify_cert_expired" "${file}"; then return 0; fi
+    if contains "tls.verify_failed" "${file}"; then return 0; fi
+    if contains "tls.handshake_failed" "${file}"; then return 0; fi
+    if contains "tls.alert_received" "${file}"; then return 0; fi
+    if contains "tls.protocol_error" "${file}"; then return 0; fi
+    return 1
+}
+
 fail() {
     local msg="$1"
     echo "[FAIL] ${msg}"
@@ -189,6 +199,10 @@ fi
 
 if [[ "${CLIENT_RC}" -eq 124 ]]; then
     fail "client timed out with expired certificate"
+fi
+
+if ! has_any_expired_tls_error "${CLIENT_LOG}"; then
+    fail "client log missing TLS expired-classified error (expected tls.verify_cert_expired/tls.verify_failed/tls.handshake_failed)"
 fi
 
 sleep "${POST_CHECK_WAIT_SEC}"

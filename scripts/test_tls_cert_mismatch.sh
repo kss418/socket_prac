@@ -50,6 +50,16 @@ contains() {
     fi
 }
 
+has_any_tls_classified_error() {
+    local file="$1"
+    if contains "tls.verify_failed" "${file}"; then return 0; fi
+    if contains "tls.verify_hostname_mismatch" "${file}"; then return 0; fi
+    if contains "tls.handshake_failed" "${file}"; then return 0; fi
+    if contains "tls.alert_received" "${file}"; then return 0; fi
+    if contains "tls.protocol_error" "${file}"; then return 0; fi
+    return 1
+}
+
 fail() {
     local msg="$1"
     echo "[FAIL] ${msg}"
@@ -100,6 +110,10 @@ fi
 
 if [[ "${CLIENT_RC}" -eq 124 ]]; then
     fail "client timed out with mismatch CA"
+fi
+
+if ! has_any_tls_classified_error "${CLIENT_LOG}"; then
+    fail "client log missing TLS classified error (expected tls.verify_*/tls.handshake_failed/tls.alert_received)"
 fi
 
 sleep "${POST_CHECK_WAIT_SEC}"
