@@ -17,6 +17,7 @@ RUN_MISMATCH_RAW="$(cfg_get "suite.run.mismatch" "1")"
 RUN_EXPIRED_RAW="$(cfg_get "suite.run.expired" "1")"
 RUN_PLAINTEXT_RAW="$(cfg_get "suite.run.plaintext" "1")"
 RUN_STRESS_RAW="$(cfg_get "suite.run.stress" "1")"
+RUN_GRACEFUL_RAW="$(cfg_get "suite.run.graceful" "1")"
 RUN_LONGRUN_RAW="$(cfg_get "suite.run.longrun" "0")"
 RUN_DB_RAW="$(cfg_get "suite.run.db" "1")"
 
@@ -61,6 +62,7 @@ check_tls_port_available() {
     if is_enabled "${RUN_EXPIRED_RAW}"; then need_tls_tests=1; fi
     if is_enabled "${RUN_PLAINTEXT_RAW}"; then need_tls_tests=1; fi
     if is_enabled "${RUN_STRESS_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_GRACEFUL_RAW}"; then need_tls_tests=1; fi
     if is_enabled "${RUN_LONGRUN_RAW}"; then need_tls_tests=1; fi
     if [[ "${need_tls_tests}" -eq 0 ]]; then
         return 0
@@ -150,6 +152,10 @@ run_test() {
     echo "[FAIL] missing executable: scripts/test_tls_concurrent_longrun.sh"
     exit 1
 }
+[[ -x "${ROOT_DIR}/scripts/test_server_graceful_shutdown.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test_server_graceful_shutdown.sh"
+    exit 1
+}
 [[ -x "${ROOT_DIR}/scripts/test_db_connection.sh" ]] || {
     echo "[FAIL] missing executable: scripts/test_db_connection.sh"
     exit 1
@@ -212,6 +218,15 @@ if [[ "${goto_end}" -eq 0 ]]; then
         run_test "tls-stress" "${ROOT_DIR}/scripts/test_tls_reconnect_stress.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-stress"
+    fi
+fi
+if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
+
+if [[ "${goto_end}" -eq 0 ]]; then
+    if is_enabled "${RUN_GRACEFUL_RAW}"; then
+        run_test "server-graceful" "${ROOT_DIR}/scripts/test_server_graceful_shutdown.sh" "${TLS_CONFIG}" || true
+    else
+        skip_test "server-graceful"
     fi
 fi
 if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
