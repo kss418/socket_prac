@@ -50,6 +50,7 @@ struct socket_info{
     uint32_t interest = 0;
     unique_fd ufd;
     endpoint ep;
+    std::string user_id;
     std::string nickname = "guest";
 };
 

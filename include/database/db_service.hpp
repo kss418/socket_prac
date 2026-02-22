@@ -2,6 +2,8 @@
 #include "core/error_code.hpp"
 #include <expected>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
 
 class db_connector;
@@ -19,6 +21,11 @@ public:
     db_service& operator=(db_service&&) = delete;
 
     std::expected<void, error_code> ping() noexcept;
-    std::expected<bool, error_code> login(std::string_view id, std::string_view pw) noexcept;
+    std::expected<std::optional<std::string>, error_code> login(
+        std::string_view id, std::string_view pw
+    ) noexcept;
     std::expected<bool, error_code> signup(std::string_view id, std::string_view pw) noexcept;
+    std::expected<bool, error_code> change_nickname(
+        std::string_view id, std::string_view nickname
+    ) noexcept;
 };

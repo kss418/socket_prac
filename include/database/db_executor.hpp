@@ -19,6 +19,7 @@ class db_executor{
         command_codec::command cmd;
         epoll_registry& reg;
         int fd;
+        std::string user_id;
     };
 
     std::queue<task> tasks;
@@ -26,8 +27,10 @@ class db_executor{
     void execute(const task& t);
     void execute_command(const command_codec::cmd_login& cmd, epoll_registry& reg, int fd);
     void execute_command(const command_codec::cmd_register& cmd, epoll_registry& reg, int fd);
+    void execute_command(
+        const command_codec::cmd_nick& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
     void execute_command(const command_codec::cmd_say& cmd, epoll_registry& reg, int fd);
-    void execute_command(const command_codec::cmd_nick& cmd, epoll_registry& reg, int fd);
     void execute_command(const command_codec::cmd_response& cmd, epoll_registry& reg, int fd);
 
 public:

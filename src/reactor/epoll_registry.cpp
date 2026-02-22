@@ -172,6 +172,18 @@ void epoll_registry::request_change_nickname(socket_info& si, std::string nick){
     request_change_nickname(si.ufd.get(), std::move(nick));
 }
 
+void epoll_registry::request_set_user_id(int fd, std::string user_id){
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(set_user_id_command{fd, std::move(user_id)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::request_set_user_id(socket_info& si, std::string user_id){
+    request_set_user_id(si.ufd.get(), std::move(user_id));
+}
+
 void epoll_registry::handle_command(register_command&& cmd){
     auto reg_exp = register_fd(std::move(cmd.fd), cmd.interest);
 }
@@ -217,6 +229,13 @@ void epoll_registry::handle_command(change_nickname_command&& cmd){
     if(it == infos.end()) return;
 
     it->second.nickname = std::move(cmd.nick);
+}
+
+void epoll_registry::handle_command(set_user_id_command&& cmd){
+    auto it = infos.find(cmd.fd);
+    if(it == infos.end()) return;
+
+    it->second.user_id = std::move(cmd.user_id);
 }
 
 void epoll_registry::work(){
