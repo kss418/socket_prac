@@ -16,6 +16,7 @@ RUN_MISMATCH_RAW="$(cfg_get "suite.run.mismatch" "1")"
 RUN_EXPIRED_RAW="$(cfg_get "suite.run.expired" "1")"
 RUN_PLAINTEXT_RAW="$(cfg_get "suite.run.plaintext" "1")"
 RUN_STRESS_RAW="$(cfg_get "suite.run.stress" "1")"
+RUN_LONGRUN_RAW="$(cfg_get "suite.run.longrun" "0")"
 RUN_DB_RAW="$(cfg_get "suite.run.db" "1")"
 
 mkdir -p "${LOG_DIR}"
@@ -111,6 +112,10 @@ run_test() {
     echo "[FAIL] missing executable: scripts/test_tls_reconnect_stress.sh"
     exit 1
 }
+[[ -x "${ROOT_DIR}/scripts/test_tls_concurrent_longrun.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test_tls_concurrent_longrun.sh"
+    exit 1
+}
 [[ -x "${ROOT_DIR}/scripts/test_db_connection.sh" ]] || {
     echo "[FAIL] missing executable: scripts/test_db_connection.sh"
     exit 1
@@ -170,6 +175,15 @@ if [[ "${goto_end}" -eq 0 ]]; then
         run_test "tls-stress" "${ROOT_DIR}/scripts/test_tls_reconnect_stress.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-stress"
+    fi
+fi
+if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
+
+if [[ "${goto_end}" -eq 0 ]]; then
+    if is_enabled "${RUN_LONGRUN_RAW}"; then
+        run_test "tls-longrun" "${ROOT_DIR}/scripts/test_tls_concurrent_longrun.sh" "${TLS_CONFIG}" || true
+    else
+        skip_test "tls-longrun"
     fi
 fi
 if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
