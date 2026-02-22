@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eEuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_tls.conf}"
@@ -23,13 +23,24 @@ MIN_UNIQUE_SENDERS_PER_CLIENT="$(cfg_get "test.longrun.min_unique_senders_per_cl
 REGISTER_LOGIN_DELAY_SEC="$(cfg_get "test.longrun.register_login_delay_sec" "0.2")"
 LOGIN_SETTLE_SEC="$(cfg_get "test.longrun.login_settle_sec" "1")"
 MESSAGE_INTERVAL_SEC="$(cfg_get "test.longrun.message_interval_sec" "5")"
+PROGRESS_INTERVAL_SEC="$(cfg_get "test.longrun.progress_interval_sec" "30")"
 MESSAGE_PREFIX="$(cfg_get "test.longrun.message_prefix" "longrun-msg")"
 ENV_FILE="$(resolve_path_from_root "$(cfg_get "test.env_file" ".env")")"
 load_env_file "${ENV_FILE}"
 
 mkdir -p "${LOG_DIR}"
+LOCK_FILE="${LOG_DIR}/.tls-concurrent-longrun.lock"
+if command -v flock >/dev/null 2>&1; then
+    exec 9>"${LOCK_FILE}"
+    if ! flock -n 9; then
+        echo "[FAIL] another test_tls_concurrent_longrun.sh is already running"
+        exit 1
+    fi
+fi
+
 RUN_TS="$(timestamp_now)"
 RUN_DIR="${LOG_DIR}/tls-concurrent-longrun-${RUN_TS}"
+CLIENT_ARGV0_PREFIX="tls-longrun-client-${RUN_TS}"
 run_seq=1
 while [[ -e "${RUN_DIR}" ]]; do
     RUN_DIR="${LOG_DIR}/tls-concurrent-longrun-${RUN_TS}-${run_seq}"
@@ -43,10 +54,16 @@ MAIN_CLIENT_LOG="$(make_timestamped_path "${RUN_DIR}" "tls-client-concurrent-lon
 
 SERVER_PID=""
 SEARCH_BIN=""
+CLEANUP_DONE=0
+FAILING=0
+SELF_PID="$$"
 declare -a CLIENT_PIDS=()
-declare -a WRITER_PIDS=()
 declare -a CLIENT_FIFOS=()
+declare -a CLIENT_FIFO_FDS=()
 declare -a CLIENT_LOGS=()
+declare -a CLIENT_MSG_SEQ=()
+declare -a CLIENT_IDS=()
+declare -a CLIENT_PWS=()
 
 if command -v rg >/dev/null 2>&1; then
     SEARCH_BIN="rg"
@@ -129,15 +146,80 @@ count_unique_senders_in_client_log() {
     fi
 }
 
-cleanup() {
-    for pid in "${CLIENT_PIDS[@]:-}"; do
-        if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+kill_pid_list() {
+    local pid_list="$1"
+    local force="${2:-0}"
+    local pid=""
+    while read -r pid; do
+        [[ -z "${pid}" ]] && continue
+        [[ "${pid}" =~ ^[0-9]+$ ]] || continue
+        [[ "${pid}" -eq "${SELF_PID}" ]] && continue
+        if [[ "${force}" -eq 1 ]]; then
+            kill -9 "${pid}" 2>/dev/null || true
+        else
             kill "${pid}" 2>/dev/null || true
-            wait "${pid}" 2>/dev/null || true
         fi
+    done <<< "${pid_list}"
+}
+
+precleanup_stale_longrun_processes() {
+    [[ -x "${CLIENT_BIN}" ]] || return 0
+
+    if command -v pgrep >/dev/null 2>&1; then
+        # Stale tagged clients from previous runs.
+        stale_tagged_clients="$(pgrep -f '^tls-longrun-client-.*' || true)"
+        if [[ -n "${stale_tagged_clients}" ]]; then
+            kill_pid_list "${stale_tagged_clients}" 0
+            sleep 0.2
+            stale_tagged_clients="$(pgrep -f '^tls-longrun-client-.*' || true)"
+            kill_pid_list "${stale_tagged_clients}" 1
+        fi
+
+        # Stale longrun script shells left by abnormal termination.
+        stale_script_shells="$(pgrep -f 'bash ./test_tls_concurrent_longrun.sh|bash .*/test_tls_concurrent_longrun.sh' || true)"
+        if [[ -n "${stale_script_shells}" ]]; then
+            kill_pid_list "${stale_script_shells}" 0
+            sleep 0.2
+            stale_script_shells="$(pgrep -f 'bash ./test_tls_concurrent_longrun.sh|bash .*/test_tls_concurrent_longrun.sh' || true)"
+            kill_pid_list "${stale_script_shells}" 1
+        fi
+
+        # Stale clients launched by older versions (untagged argv0).
+        stale_old_clients="$(pgrep -f "^${CLIENT_BIN} ${CLIENT_IP} ${CLIENT_PORT}( |$)" || true)"
+        if [[ -n "${stale_old_clients}" ]]; then
+            kill_pid_list "${stale_old_clients}" 0
+            sleep 0.2
+            stale_old_clients="$(pgrep -f "^${CLIENT_BIN} ${CLIENT_IP} ${CLIENT_PORT}( |$)" || true)"
+            kill_pid_list "${stale_old_clients}" 1
+        fi
+    fi
+}
+
+cleanup() {
+    if [[ "${CLEANUP_DONE}" -eq 1 ]]; then
+        return
+    fi
+    CLEANUP_DONE=1
+
+    # Terminate all direct background jobs of this shell first.
+    job_pids="$(jobs -pr 2>/dev/null || true)"
+    if [[ -n "${job_pids}" ]]; then
+        while read -r pid; do
+            [[ -z "${pid}" ]] && continue
+            kill "${pid}" 2>/dev/null || true
+        done <<< "${job_pids}"
+        while read -r pid; do
+            [[ -z "${pid}" ]] && continue
+            wait "${pid}" 2>/dev/null || true
+        done <<< "${job_pids}"
+    fi
+
+    for fd in "${CLIENT_FIFO_FDS[@]:-}"; do
+        [[ -z "${fd}" ]] && continue
+        eval "exec ${fd}>&-" 2>/dev/null || true
     done
 
-    for pid in "${WRITER_PIDS[@]:-}"; do
+    for pid in "${CLIENT_PIDS[@]:-}"; do
         if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
             kill "${pid}" 2>/dev/null || true
             wait "${pid}" 2>/dev/null || true
@@ -152,19 +234,127 @@ cleanup() {
         kill "${SERVER_PID}" 2>/dev/null || true
         wait "${SERVER_PID}" 2>/dev/null || true
     fi
+
+    # Last resort for remaining shell jobs.
+    job_pids="$(jobs -pr 2>/dev/null || true)"
+    if [[ -n "${job_pids}" ]]; then
+        while read -r pid; do
+            [[ -z "${pid}" ]] && continue
+            kill -9 "${pid}" 2>/dev/null || true
+            wait "${pid}" 2>/dev/null || true
+        done <<< "${job_pids}"
+    fi
+
+    # Fallback: reap any tagged client processes that may have escaped job tracking.
+    if command -v pgrep >/dev/null 2>&1; then
+        tagged_client_pids="$(pgrep -f "^${CLIENT_ARGV0_PREFIX}-[0-9]+( |$)" || true)"
+        if [[ -n "${tagged_client_pids}" ]]; then
+            while read -r pid; do
+                [[ -z "${pid}" ]] && continue
+                kill "${pid}" 2>/dev/null || true
+            done <<< "${tagged_client_pids}"
+            sleep 0.2
+            tagged_client_pids="$(pgrep -f "^${CLIENT_ARGV0_PREFIX}-[0-9]+( |$)" || true)"
+            if [[ -n "${tagged_client_pids}" ]]; then
+                while read -r pid; do
+                    [[ -z "${pid}" ]] && continue
+                    kill -9 "${pid}" 2>/dev/null || true
+                done <<< "${tagged_client_pids}"
+            fi
+        fi
+    fi
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM HUP
+
+print_file_head() {
+    local file="$1"
+    local max_lines="${2:-120}"
+    local count=0
+    local line=""
+
+    [[ -f "${file}" ]] || return 0
+    while IFS= read -r line; do
+        printf '%s\n' "${line}"
+        count=$((count + 1))
+        if [[ "${count}" -ge "${max_lines}" ]]; then
+            echo "[INFO] log truncated at ${max_lines} lines"
+            break
+        fi
+    done < "${file}"
+}
+
+print_fork_limit_diag() {
+    local nproc_limit=""
+    local nofile_limit=""
+    local cgpath=""
+    local cgroup_base=""
+    local pids_max=""
+    local pids_cur=""
+
+    nproc_limit="$(ulimit -u 2>/dev/null || true)"
+    nofile_limit="$(ulimit -n 2>/dev/null || true)"
+    [[ -n "${nproc_limit}" ]] && echo "[INFO] nproc limit (ulimit -u): ${nproc_limit}"
+    [[ -n "${nofile_limit}" ]] && echo "[INFO] nofile limit (ulimit -n): ${nofile_limit}"
+
+    cgpath="$(awk -F: '$2=="pids"{print $3; exit}' /proc/self/cgroup 2>/dev/null || true)"
+    if [[ -z "${cgpath}" ]]; then
+        cgpath="$(awk -F: '$1=="0"{print $3; exit}' /proc/self/cgroup 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${cgpath}" ]]; then
+        for cgroup_base in "/sys/fs/cgroup${cgpath}" "/sys/fs/cgroup/pids${cgpath}"; do
+            if [[ -f "${cgroup_base}/pids.max" && -f "${cgroup_base}/pids.current" ]]; then
+                pids_max="$(cat "${cgroup_base}/pids.max" 2>/dev/null || true)"
+                pids_cur="$(cat "${cgroup_base}/pids.current" 2>/dev/null || true)"
+                if [[ -n "${pids_max}" && -n "${pids_cur}" ]]; then
+                    echo "[INFO] cgroup pids: ${pids_cur}/${pids_max}"
+                fi
+                break
+            fi
+        done
+    fi
+}
 
 fail() {
     local msg="$1"
+    set +e
+    if [[ "${FAILING}" -eq 1 ]]; then
+        exit 1
+    fi
+    FAILING=1
+
     echo "[FAIL] ${msg}"
     echo "--- server log (${SERVER_LOG}) ---"
-    cat "${SERVER_LOG}" || true
+    print_file_head "${SERVER_LOG}" || true
     echo "--- aggregate client log (${MAIN_CLIENT_LOG}) ---"
-    cat "${MAIN_CLIENT_LOG}" || true
+    print_file_head "${MAIN_CLIENT_LOG}" || true
+    if [[ "${msg}" == *"fork/resource limit"* || "${msg}" == *"fork"* ]]; then
+        print_fork_limit_diag
+    fi
     echo "--- run dir (${RUN_DIR}) ---"
+    cleanup
     exit 1
 }
+
+on_error() {
+    local rc="$1"
+    local line="$2"
+    if [[ "${FAILING}" -eq 1 ]]; then
+        exit "${rc}"
+    fi
+    fail "unexpected error (line=${line}, rc=${rc})"
+}
+
+trap 'on_error "$?" "$LINENO"' ERR
+
+on_pipe() {
+    if [[ "${FAILING}" -eq 1 ]]; then
+        exit 141
+    fi
+    fail "SIGPIPE (broken pipe) while writing to client fifo (client likely exited)"
+}
+
+trap 'on_pipe' PIPE
 
 wait_pid_exit_with_timeout() {
     local pid="$1"
@@ -185,6 +375,7 @@ wait_pid_exit_with_timeout() {
 [[ "${LONGRUN_CLIENT_COUNT}" -gt 0 ]] || fail "test.longrun.client_count must be > 0"
 [[ "${LONGRUN_DURATION_SEC}" =~ ^[0-9]+$ ]] || fail "test.longrun.duration_sec must be numeric"
 [[ "${LONGRUN_DURATION_SEC}" -gt 0 ]] || fail "test.longrun.duration_sec must be > 0"
+[[ "${PROGRESS_INTERVAL_SEC}" =~ ^[0-9]+$ ]] || fail "test.longrun.progress_interval_sec must be numeric"
 [[ "${CONNECT_WAIT_TRY}" =~ ^[0-9]+$ ]] || fail "test.longrun.connect_wait_try must be numeric"
 [[ "${CONNECT_WAIT_TRY}" -gt 0 ]] || fail "test.longrun.connect_wait_try must be > 0"
 [[ "${CLOSE_WAIT_SEC}" =~ ^[0-9]+$ ]] || fail "test.longrun.close_wait_sec must be numeric"
@@ -194,6 +385,8 @@ wait_pid_exit_with_timeout() {
 if [[ "${LONGRUN_CLIENT_COUNT}" -lt "${MIN_UNIQUE_SENDERS_PER_CLIENT}" ]]; then
     MIN_UNIQUE_SENDERS_PER_CLIENT="${LONGRUN_CLIENT_COUNT}"
 fi
+
+precleanup_stale_longrun_processes
 
 echo "[INFO] starting server: ${SERVER_BIN}"
 if command -v stdbuf >/dev/null 2>&1; then
@@ -221,31 +414,35 @@ for ((i=1; i<=LONGRUN_CLIENT_COUNT; ++i)); do
 
     client_id="lr_${RUN_ID}_${client_idx}"
     client_pw="pw_${RUN_ID}_${client_idx}"
-    (
-        printf '/register %s %s\n' "${client_id}" "${client_pw}"
-        sleep "${REGISTER_LOGIN_DELAY_SEC}"
-        printf '/login %s %s\n' "${client_id}" "${client_pw}"
-        sleep "${LOGIN_SETTLE_SEC}"
-
-        end_ts=$((SECONDS + LONGRUN_DURATION_SEC))
-        msg_seq=1
-        while [[ "${SECONDS}" -lt "${end_ts}" ]]; do
-            printf '%s-%s-%s\n' "${MESSAGE_PREFIX}" "${client_idx}" "${msg_seq}"
-            msg_seq=$((msg_seq + 1))
-            sleep "${MESSAGE_INTERVAL_SEC}"
-        done
-    ) > "${fifo_path}" &
-    writer_pid=$!
-    WRITER_PIDS+=("${writer_pid}")
-
     client_log="$(make_timestamped_path "${RUN_DIR}" "tls-client-concurrent-${client_idx}" "log")"
     CLIENT_LOGS+=("${client_log}")
+    CLIENT_MSG_SEQ+=("1")
+    CLIENT_IDS+=("${client_id}")
+    CLIENT_PWS+=("${client_pw}")
+
+    client_argv0="${CLIENT_ARGV0_PREFIX}-${client_idx}"
+    set +e
+    exec -a "${client_argv0}" "${CLIENT_BIN}" "${CLIENT_IP}" "${CLIENT_PORT}" < "${fifo_path}" > "${client_log}" 2>&1 &
+    client_spawn_rc=$?
+    set -e
+    if [[ "${client_spawn_rc}" -ne 0 ]]; then
+        fail "failed to spawn client ${client_idx} (fork/resource limit)"
+    fi
+    client_pid=$!
+    CLIENT_PIDS+=("${client_pid}")
 
     set +e
-    "${CLIENT_BIN}" "${CLIENT_IP}" "${CLIENT_PORT}" < "${fifo_path}" > "${client_log}" 2>&1 &
-    client_pid=$!
+    exec {fifo_fd}> "${fifo_path}"
+    fifo_open_rc=$?
     set -e
-    CLIENT_PIDS+=("${client_pid}")
+    if [[ "${fifo_open_rc}" -ne 0 ]]; then
+        fail "failed to open fifo writer for client ${client_idx} (fork/resource limit)"
+    fi
+    CLIENT_FIFO_FDS+=("${fifo_fd}")
+
+    if ! printf '/register %s %s\n' "${client_id}" "${client_pw}" >&${fifo_fd}; then
+        fail "failed to write register command to client ${client_idx} fifo"
+    fi
 
     {
         echo "[CLIENT ${client_idx}] id=${client_id} pid=${client_pid} log=${client_log}"
@@ -255,6 +452,24 @@ for ((i=1; i<=LONGRUN_CLIENT_COUNT; ++i)); do
         sleep "${CONNECT_STAGGER_SEC}"
     fi
 done
+
+if [[ "${REGISTER_LOGIN_DELAY_SEC}" != "0" ]]; then
+    sleep "${REGISTER_LOGIN_DELAY_SEC}"
+fi
+
+for ((i=0; i<${#CLIENT_FIFO_FDS[@]}; ++i)); do
+    fd="${CLIENT_FIFO_FDS[$i]}"
+    client_idx=$((i + 1))
+    client_id="${CLIENT_IDS[$i]}"
+    client_pw="${CLIENT_PWS[$i]}"
+    if ! printf '/login %s %s\n' "${client_id}" "${client_pw}" >&${fd}; then
+        fail "failed to write login command to client ${client_idx} fifo"
+    fi
+done
+
+if [[ "${LOGIN_SETTLE_SEC}" != "0" ]]; then
+    sleep "${LOGIN_SETTLE_SEC}"
+fi
 
 connected_ready=0
 for ((try=1; try<=CONNECT_WAIT_TRY; ++try)); do
@@ -284,19 +499,49 @@ for ((i=0; i<${#CLIENT_PIDS[@]}; ++i)); do
 done
 
 echo "[INFO] concurrent clients connected. holding for ${LONGRUN_DURATION_SEC}s"
+hold_start="${SECONDS}"
 hold_end=$((SECONDS + LONGRUN_DURATION_SEC))
+next_progress_mark="${PROGRESS_INTERVAL_SEC}"
+last_progress_reported=0
 while [[ "${SECONDS}" -lt "${hold_end}" ]]; do
     if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
         fail "server crashed during longrun hold"
     fi
-    sleep "${CHECK_INTERVAL_SEC}"
+
+    if [[ "${PROGRESS_INTERVAL_SEC}" -gt 0 ]]; then
+        elapsed_sec=$((SECONDS - hold_start))
+        while [[ "${next_progress_mark}" -le "${LONGRUN_DURATION_SEC}" && "${elapsed_sec}" -ge "${next_progress_mark}" ]]; do
+            echo "[INFO] hold progress: ${next_progress_mark}/${LONGRUN_DURATION_SEC}s"
+            last_progress_reported="${next_progress_mark}"
+            next_progress_mark=$((next_progress_mark + PROGRESS_INTERVAL_SEC))
+        done
+    fi
+
+    for ((i=0; i<${#CLIENT_FIFO_FDS[@]}; ++i)); do
+        fd="${CLIENT_FIFO_FDS[$i]}"
+        client_idx=$((i + 1))
+        msg_seq="${CLIENT_MSG_SEQ[$i]}"
+        if ! printf '%s-%s-%s\n' "${MESSAGE_PREFIX}" "${client_idx}" "${msg_seq}" >&${fd}; then
+            fail "failed to write longrun message to client ${client_idx} fifo"
+        fi
+        CLIENT_MSG_SEQ[$i]=$((msg_seq + 1))
+    done
+
+    if [[ "${MESSAGE_INTERVAL_SEC}" != "0" ]]; then
+        sleep "${MESSAGE_INTERVAL_SEC}"
+    else
+        sleep "${CHECK_INTERVAL_SEC}"
+    fi
 done
 
+if [[ "${PROGRESS_INTERVAL_SEC}" -gt 0 && "${last_progress_reported}" -lt "${LONGRUN_DURATION_SEC}" ]]; then
+    echo "[INFO] hold progress: ${LONGRUN_DURATION_SEC}/${LONGRUN_DURATION_SEC}s"
+fi
+
 echo "[INFO] hold finished; closing clients"
-for pid in "${WRITER_PIDS[@]}"; do
-    if kill -0 "${pid}" 2>/dev/null; then
-        kill "${pid}" 2>/dev/null || true
-    fi
+for fd in "${CLIENT_FIFO_FDS[@]}"; do
+    [[ -z "${fd}" ]] && continue
+    eval "exec ${fd}>&-" 2>/dev/null || true
 done
 
 for ((i=0; i<${#CLIENT_PIDS[@]}; ++i)); do
