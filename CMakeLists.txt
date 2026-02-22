@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(socket_prac
     src/core/error_code.cpp
     src/core/config_loader.cpp
+    src/core/logger.cpp
     src/core/unique_fd.cpp
     src/net/addr.cpp
     src/net/fd_helper.cpp

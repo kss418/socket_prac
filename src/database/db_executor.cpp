@@ -1,4 +1,5 @@
 #include "database/db_executor.hpp"
+#include "core/logger.hpp"
 #include <optional>
 #include <string>
 
@@ -73,7 +74,7 @@ void db_executor::execute_command(
 ){
     auto login_exp = db.login(cmd.id, cmd.pw);
     if(!login_exp){
-        handle_error("db_executor/login failed", login_exp.error());
+        logger::log_warn("login failed", "db_executor::execute_command()", login_exp.error());
         reg.request_send(fd, command_codec::cmd_response{"login failed"});
         return;
     }
@@ -88,7 +89,7 @@ void db_executor::execute_command(
 ){
     auto signup_exp = db.signup(cmd.id, cmd.pw);
     if(!signup_exp){
-        handle_error("db_executor/register failed", signup_exp.error());
+        logger::log_warn("register failed", "db_executor::execute_command", signup_exp.error());
         reg.request_send(fd, command_codec::cmd_response{"register failed"});
         return;
         

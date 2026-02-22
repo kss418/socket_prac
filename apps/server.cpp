@@ -1,5 +1,6 @@
 #include "server/epoll_server.hpp"
 #include "core/config_loader.hpp"
+#include "core/logger.hpp"
 #include "database/db_connector.hpp"
 #include "database/db_service.hpp"
 #include "net/tls_context.hpp"
@@ -17,13 +18,13 @@ int main(){
 
     auto cfg_exp = config_loader::load_key_value_file(config_path.string());
     if(!cfg_exp){
-        handle_error("config load failed", cfg_exp);
+        logger::log_error("config load failed", __func__, cfg_exp);
         return 1;
     }
 
     auto env_exp = config_loader::load_key_value_file(env_path.string());
     if(!env_exp){
-        handle_error(".env load failed", env_exp);
+        logger::log_error(".env load failed", __func__, env_exp);
         return 1;
     }
 
@@ -31,7 +32,7 @@ int main(){
     const config_loader::config_map& env = *env_exp;
     auto req_exp = config_loader::check_server_require(cfg, env);
     if(!req_exp){
-        handle_error("missing required config key", req_exp);
+        logger::log_error("missing required config key", __func__, req_exp);
         return 1;
     }
 
@@ -54,7 +55,7 @@ int main(){
         db_host, db_port, db_name, db_user, db_password
     );
     if(!db_exp){
-        handle_error("db connect failed", db_exp);
+        logger::log_error("db connect failed", __func__, db_exp);
         return 1;
     }
 
@@ -62,7 +63,7 @@ int main(){
 
     auto tls_ctx_exp = tls_context::create_server(tls_cert_path, tls_key_path);
     if(!tls_ctx_exp){
-        handle_error("tls context create failed", tls_ctx_exp);
+        logger::log_error("tls context create failed", __func__, tls_ctx_exp);
         return 1;
     }
 
@@ -71,7 +72,7 @@ int main(){
 
     auto run_exp = server_exp->run();
     if(!run_exp){
-        handle_error("server run failed", run_exp);
+        logger::log_error("server run failed", __func__, run_exp);
         return 1;
     }
 

@@ -1,4 +1,5 @@
 #include "server/epoll_listener.hpp"
+#include "core/logger.hpp"
 #include "reactor/epoll_utility.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
@@ -28,13 +29,13 @@ std::expected <epoll_listener, error_code> epoll_listener::create(addrinfo* head
             if(::listen(fd.get(), SOMAXCONN) == 0){
                 auto wakeup_exp = epoll_wakeup::create();
                 if(!wakeup_exp){
-                    handle_error("create/epoll_wakeup::create failed", wakeup_exp);
+                    logger::log_error("epoll_wakeup/create failed", "epoll_listener::create()", wakeup_exp);
                     return std::unexpected(wakeup_exp.error());
                 }
 
                 auto add_exp = epoll_utility::add_fd(wakeup_exp->get_epfd(), fd.get(), EPOLLIN);
                 if(!add_exp){
-                    handle_error("create/add_listener_fd failed", add_exp);
+                    logger::log_error("add_fd failed", "epoll_listener::create()", add_exp);
                     return std::unexpected(add_exp.error());
                 }
 

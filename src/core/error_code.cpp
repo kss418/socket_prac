@@ -31,7 +31,3 @@ std::string to_string(const error_code& ec){
 std::ostream& operator<<(std::ostream& os, const error_code& ec){
     return os << to_string(ec);
 }
-
-void handle_error(const std::string& msg, const error_code& ec){
-    std::cerr << msg << " " << ec << "\n";
-}

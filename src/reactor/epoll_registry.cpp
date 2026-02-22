@@ -1,4 +1,5 @@
 #include "reactor/epoll_registry.hpp"
+#include "core/logger.hpp"
 #include "net/tls_context.hpp"
 #include "reactor/epoll_utility.hpp"
 #include <cerrno>
@@ -10,42 +11,42 @@ epoll_registry::epoll_registry(epoll_wakeup wakeup, tls_context& tls_ctx) :
 std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd, uint32_t interest){
     int fd = client_fd.get();
     if(fd == -1){
-        handle_error("register_fd/fd error", error_code::from_errno(EINVAL));
+        logger::log_error("fd error", "epoll_registry::register_fd()", error_code::from_errno(EINVAL));
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
     if(infos.contains(fd)){
-        handle_error("register_fd/fd existed error", error_code::from_errno(EEXIST));
+        logger::log_warn("fd existed error", "epoll_registry::register_fd()", error_code::from_errno(EEXIST));
         return std::unexpected(error_code::from_errno(EEXIST));
     }
 
     auto nonblocking_exp = epoll_utility::set_nonblocking(fd);
     if(!nonblocking_exp){
-        handle_error("register_fd/set_nonblocking failed", nonblocking_exp);
+        logger::log_error("set_nonblocking failed", "epoll_registry::register_fd()", nonblocking_exp);
         return std::unexpected(nonblocking_exp.error());
     }
 
     auto ep_exp = make_peer_endpoint(fd);
     if(!ep_exp){
-        handle_error("register_fd/make_peer_endpoint failed", ep_exp);
+        logger::log_error("make_peer_endpoint failed", "epoll_registry::register_fd()", ep_exp);
         return std::unexpected(ep_exp.error());
     }
 
     auto init_str_exp = ep_exp->init_string();
     if(!init_str_exp){
-        handle_error("register_fd/init_string failed", init_str_exp);
+        logger::log_error("init_string failed", "epoll_registry::register_fd()", init_str_exp);
         return std::unexpected(init_str_exp.error());
     }
 
     auto add_ep_exp = epoll_utility::add_fd(epfd.get(), fd, interest);
     if(!add_ep_exp){
-        handle_error("register_fd/add_fd failed", add_ep_exp);
+        logger::log_error("add_fd failed", "epoll_registry::register_fd()", add_ep_exp);
         return std::unexpected(add_ep_exp.error());
     }
 
     auto tls_exp = tls_session::create_server(tls_ctx, fd);
     if(!tls_exp){
-        handle_error("register_fd/tls_session::create_server failed", tls_exp);
+        logger::log_error("tls_session create failed", "epoll_registry::register_fd()", tls_exp);
         return std::unexpected(tls_exp.error());
     }
     
@@ -65,7 +66,7 @@ std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd,
 
 std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
     if(fd == -1){
-        handle_error("unregister_fd/fd error", error_code::from_errno(EINVAL));
+        logger::log_error("fd error", "epoll_registry::unregister_fd()", error_code::from_errno(EINVAL));
         return std::unexpected(error_code::from_errno(EINVAL));
     }
 
@@ -77,7 +78,7 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
         const error_code& ec = del_ep_exp.error();
         bool ignorable = ec.domain == error_domain::errno_domain
             && (ec.code == ENOENT || ec.code == EBADF);
-        if(!ignorable) handle_error("unregister_fd/del_ep failed", del_ep_exp);
+        if(!ignorable) logger::log_error("del_fd failed", "epoll_registry::unregister_fd()", del_ep_exp);
     }
 
     infos.erase(it);
@@ -103,7 +104,7 @@ std::expected <void, error_code> epoll_registry::append_send(
     si.interest |= EPOLLOUT;
     auto sync_exp = sync_interest(fd, si);
     if(!sync_exp){
-        handle_error("work/sync_interest failed", sync_exp);
+        logger::log_warn("sync_interest failed", "epoll_registry::append_send()", sync_exp);
         return std::unexpected(sync_exp.error());
     }
 
@@ -152,12 +153,12 @@ void epoll_registry::request_change_nickname(int send_fd, std::string nick){
 
 void epoll_registry::handle_command(register_command&& cmd){
     auto reg_exp = register_fd(std::move(cmd.fd), cmd.interest);
-    if(!reg_exp) handle_error("work/register_fd failed", reg_exp);
+    if(!reg_exp) logger::log_warn("register_command failed", "epoll_registry::handle_command()", reg_exp);
 }
 
 void epoll_registry::handle_command(const unregister_command& cmd){
     auto unreg_exp = unregister_fd(cmd.fd);
-    if(!unreg_exp) handle_error("epoll_registry/unregister_fd failed", unreg_exp);
+    if(!unreg_exp) logger::log_warn("unregister_command failed", "epoll_registry::handle_command()", unreg_exp);
 }
 
 void epoll_registry::handle_command(send_one_command&& cmd){

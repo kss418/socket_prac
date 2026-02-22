@@ -1,4 +1,5 @@
 #include "server/epoll_server.hpp"
+#include "core/logger.hpp"
 #include "database/db_service.hpp"
 #include "net/addr.hpp"
 #include "reactor/epoll_utility.hpp"
@@ -17,19 +18,19 @@ std::expected <epoll_server, error_code> epoll_server::create(
 ){
     auto addr_exp = get_addr_server(port);
     if(!addr_exp){
-        handle_error("create/get_addr_server failed", addr_exp);
+        logger::log_error("get_addr_server failed", "epoll_server::create()", addr_exp);
         return std::unexpected(addr_exp.error());
     }
 
     auto listen_fd_exp = epoll_listener::create(addr_exp->get());
     if(!listen_fd_exp){
-        handle_error("create/epoll_listener::create failed", listen_fd_exp);
+        logger::log_error("epoll_listener/create failed", "epoll_server::create()", listen_fd_exp);
         return std::unexpected(listen_fd_exp.error());
     }
 
     auto wakeup_exp = epoll_wakeup::create();
     if(!wakeup_exp){
-        handle_error("create/epoll_wakeup::create failed", wakeup_exp);
+        logger::log_error("epoll_wakeup/create failed", "epoll_server::create()", wakeup_exp);
         return std::unexpected(wakeup_exp.error());
     }
 
@@ -69,7 +70,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         epoll_acceptor acceptor(listener, registry);
         auto accept_exp = acceptor.run(st);
         if(!accept_exp){
-            handle_error("acceptor thread error", accept_exp);
+            logger::log_error("acceptor thread error", "epoll_server::run()", accept_exp);
             signal_stop(accept_exp.error());
         }
     });
@@ -85,7 +86,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         );
 
         if(!run_exp){
-            handle_error("event loop thread error", run_exp);
+            logger::log_error("event loop thread error", "epoll_server::run()", run_exp);
             signal_stop(run_exp.error());
         }
     });
@@ -130,7 +131,7 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_inf
 
     auto hs_exp = si.tls.handshake();
     if(!hs_exp){
-        handle_error(to_string(si.ep) + " run/handshake failed", hs_exp);
+        logger::log_error(to_string(si.ep) + "tls_handshake failed", "epoll_server::progress_tls_handshake()", hs_exp);
         request_unregister(si);
         return std::unexpected(hs_exp.error());
     }
@@ -142,7 +143,7 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_inf
 
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        handle_error(to_string(si.ep) + " run/sync tls interest failed", sync_exp);
+        logger::log_error(to_string(si.ep) + "sync_tls_interest failed", "epoll_server::progress_tls_handshake()", sync_exp);
         request_unregister(si);
         return std::unexpected(sync_exp.error());
     }
@@ -157,14 +158,14 @@ void epoll_server::handle_send(socket_info& si){
 
     auto fs_exp = flush_send(si);
     if(!fs_exp){
-        handle_error("run/handle_send/flush_send failed", fs_exp);
+        logger::log_error("flush_send failed", "epoll_server::handle_send()", fs_exp);
         request_unregister(si);
         return; 
     }
 
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        handle_error("run/handle_send/sync_tls_interest failed", sync_exp);
+        logger::log_error("sync_tls_interest failed", "epoll_server::handle_send()", sync_exp);
         request_unregister(si);
     }
 }
@@ -176,7 +177,7 @@ bool epoll_server::handle_recv(socket_info& si, uint32_t event){
 
     auto dr_exp = drain_recv(si);
     if(!dr_exp){
-        handle_error(to_string(si.ep) + " run/handle_recv/drain_recv failed", dr_exp);
+        logger::log_error(to_string(si.ep) + "drain_recv failed", "epoll_server::handle_recv()", dr_exp);
         request_unregister(si);
         return false;
     }
@@ -187,7 +188,7 @@ bool epoll_server::handle_recv(socket_info& si, uint32_t event){
 
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        handle_error("run/handle_recv/sync_tls_interest failed", sync_exp);
+        logger::log_error("sync_tls_interest failed", "epoll_server::handle_recv()", sync_exp);
         request_unregister(si);
         return false;
     }
@@ -204,7 +205,7 @@ void epoll_server::handle_close(socket_info& si){
     if(si.tls.is_handshake_done() && !si.tls.is_closed()){
         auto shutdown_exp = si.tls.shutdown();
         if(!shutdown_exp){
-            handle_error("run/handle_close/tls shutdown failed", shutdown_exp);
+            logger::log_warn("tls_shutdown failed", "epoll_server::handle_close()", shutdown_exp);
         }
     }
 
@@ -220,7 +221,7 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
 
     if(it->second.tls.is_handshake_done()){
         auto shutdown_exp = it->second.tls.shutdown();
-        if(!shutdown_exp) handle_error("run/handle_client_error/shutdown failed", shutdown_exp);
+        if(!shutdown_exp) logger::log_warn("shutdown_failed", "epoll_server::handle_client_error", shutdown_exp);
     }
 
     int ec = ECONNRESET;
@@ -233,7 +234,7 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
         ec = so_error;
     }
 
-    handle_error("run/handle_client_error", error_code::from_errno(ec));
+    logger::log_error("handle_error", "epoll_server::handle_client_error", error_code::from_errno(ec));
     request_unregister(it->second);
 }
 
@@ -244,7 +245,7 @@ bool epoll_server::handle_execute(socket_info& si){
 
     auto dec_exp = command_codec::decode(*line);
     if(!dec_exp){
-        handle_error("decode failed", dec_exp);
+        logger::log_error("decode failed", "epoll_server::handle_execute()", dec_exp);
         return true;
     }
 

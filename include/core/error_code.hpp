@@ -4,7 +4,6 @@
 #include <netdb.h>
 #include <expected>
 #include <iostream>
-#include <cassert>
 
 namespace command_codec{
     enum class decode_error : int;
@@ -35,10 +34,3 @@ struct error_code{
 
 std::string to_string(const error_code& ec);
 std::ostream& operator<<(std::ostream& os, const error_code& ec);
-void handle_error(const std::string& msg, const error_code& ec);
-
-template<class T>
-void handle_error(const std::string& msg, const std::expected<T, error_code>& ec_exp){
-    assert(!ec_exp);
-    handle_error(msg, ec_exp.error());
-}

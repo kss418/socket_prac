@@ -1,4 +1,5 @@
 #include "server/epoll_acceptor.hpp"
+#include "core/logger.hpp"
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <cerrno>
@@ -15,7 +16,7 @@ void epoll_acceptor::handle_accept(){
                 && (ec.code == EAGAIN || ec.code == EWOULDBLOCK);
             if(is_end) return;
 
-            handle_error("acceptor/handle_accept/make_client_fd failed", client_fd_exp);
+            logger::log_error("make_client_fd failed", "epoll_acceptor::handle_accept()", client_fd_exp);
             return;
         }
 

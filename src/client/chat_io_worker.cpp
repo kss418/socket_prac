@@ -1,4 +1,5 @@
 #include "client/chat_io_worker.hpp"
+#include "core/logger.hpp"
 #include "protocol/line_parser.hpp"
 #include <array>
 #include <cerrno>
@@ -137,7 +138,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             while(auto line = line_parser::parse_line(si.recv)){
                 auto dec_exp = command_codec::decode(*line);
                 if(!dec_exp){
-                    handle_error("chat_io_worker/decode failed", dec_exp);
+                    logger::log_warn("command_codec/decode failed", "chat_io_worker::run()", dec_exp);
                     continue;
                 }
 
@@ -157,7 +158,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
 
     if(si.tls.is_handshake_done() && !si.tls.is_closed()){
         auto shutdown_exp = si.tls.shutdown();
-        if(!shutdown_exp) handle_error("chat_io_worker/tls shutdown failed", shutdown_exp);
+        if(!shutdown_exp) logger::log_warn("tls shutdown failed", "chat_io_worker::run()", shutdown_exp);
     }
 
     return {};

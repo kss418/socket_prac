@@ -1,4 +1,5 @@
 #include "reactor/epoll_wakeup.hpp"
+#include "core/logger.hpp"
 #include <cerrno>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
@@ -40,7 +41,7 @@ void epoll_wakeup::request_wakeup() const{
     if(n == -1){
         int ec = errno;
         if(ec == EAGAIN) return;
-        handle_error("epoll_wakeup/request_wakeup failed", error_code::from_errno(ec));
+        logger::log_warn("::write() failed", "epoll_wakeup::request_wakeup()", error_code::from_errno(ec));
     }
 }
 
@@ -51,7 +52,7 @@ void epoll_wakeup::consume_wakeup() const{
         if(n == -1){
             int ec = errno;
             if(ec == EAGAIN) return;
-            handle_error("epoll_wakeup/consume_wakeup failed", error_code::from_errno(ec));
+            logger::log_warn("::read() failed", "consume_wakeup::request_wakeup()", error_code::from_errno(ec));
             return;
         }
         if(n == 0) return;

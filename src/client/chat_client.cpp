@@ -1,6 +1,7 @@
 #include "client/chat_client.hpp"
 #include "client/chat_executor.hpp"
 #include "client/chat_io_worker.hpp"
+#include "core/logger.hpp"
 #include "net/addr.hpp"
 #include <condition_variable>
 #include <mutex>
@@ -18,19 +19,19 @@ std::expected <chat_client, error_code> chat_client::create(
 ){
     auto addr_exp = get_addr_client(ip, port);
     if(!addr_exp){
-        handle_error("get_addr_client failed", addr_exp);
+        logger::log_error("get_addr_client failed", "chat_client::create()", addr_exp);
         return std::unexpected(addr_exp.error());
     }
 
     auto server_fd_exp = make_server_fd(addr_exp->get());
     if(!server_fd_exp){
-        handle_error("make_server_fd failed", server_fd_exp);
+        logger::log_error("make_server_fd failed", "chat_client::create()", server_fd_exp);
         return std::unexpected(server_fd_exp.error());
     }
 
     auto tls_ctx_exp = tls_context::create_client(ca_file_path);
     if(!tls_ctx_exp){
-        handle_error("create_client tls_context failed", tls_ctx_exp);
+        logger::log_error("tls_context create failed", "chat_client::create()", tls_ctx_exp);
         return std::unexpected(tls_ctx_exp.error());
     }
 
@@ -38,7 +39,7 @@ std::expected <chat_client, error_code> chat_client::create(
 
     auto tls_exp = tls_session::create_client(tls_ctx, server_fd_exp->get(), ip);
     if(!tls_exp){
-        handle_error("create_client tls_session failed", tls_exp);
+        logger::log_error("tls_session create failed", "chat_client::create()", tls_exp);
         return std::unexpected(tls_exp.error());
     }
 
@@ -76,7 +77,7 @@ std::expected <void, error_code> chat_client::run(){
     std::jthread io_thread([&io_worker, &signal_stop](std::stop_token st){
         auto io_exp = io_worker.run(st);
         if(!io_exp){
-            handle_error("chat_io_worker/run failed", io_exp);
+            logger::log_error("io_thread error", "chat_client::run()", io_exp);
             signal_stop(io_exp.error());
         }
         else signal_stop();
