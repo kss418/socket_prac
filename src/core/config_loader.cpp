@@ -34,6 +34,17 @@ std::string config_loader::trim(std::string_view sv){
     return std::string(sv.substr(begin, end - begin));
 }
 
+std::string config_loader::trim_wrapping_quotes(std::string_view sv){
+    if(sv.size() >= 2){
+        const char first = sv.front();
+        const char last = sv.back();
+        if((first == '\'' && last == '\'') || (first == '"' && last == '"')){
+            return std::string(sv.substr(1, sv.size() - 2));
+        }
+    }
+    return std::string(sv);
+}
+
 bool config_loader::is_comment_or_blank(std::string_view line){
     for(char ch : line){
         if(std::isspace(static_cast<unsigned char>(ch)) != 0) continue;
@@ -93,7 +104,9 @@ std::string config_loader::get_or(
     return it->second;
 }
 
-std::expected <void, error_code> config_loader::check_server_require(const config_loader::config_map& cfg){
+std::expected <void, error_code> config_loader::check_server_require(
+    const config_loader::config_map& cfg, const config_loader::config_map& env
+){
     if(std::expected<std::string, error_code> req = config_loader::require(cfg, "db.host"); !req){
         return std::unexpected(req.error());
     }
@@ -103,7 +116,7 @@ std::expected <void, error_code> config_loader::check_server_require(const confi
     if(std::expected<std::string, error_code> req = config_loader::require(cfg, "db.name"); !req){
         return std::unexpected(req.error());
     }
-    if(std::expected<std::string, error_code> req = config_loader::require(cfg, "db.user"); !req){
+    if(std::expected<std::string, error_code> req = config_loader::require(env, "db.user"); !req){
         return std::unexpected(req.error());
     }
     if(std::expected<std::string, error_code> req = config_loader::require(cfg, "tls.cert"); !req){
@@ -112,7 +125,7 @@ std::expected <void, error_code> config_loader::check_server_require(const confi
     if(std::expected<std::string, error_code> req = config_loader::require(cfg, "tls.key"); !req){
         return std::unexpected(req.error());
     }
-    if(std::expected<std::string, error_code> req = config_loader::require(cfg, "db.password_env"); !req){
+    if(std::expected<std::string, error_code> req = config_loader::require(env, "db.password"); !req){
         return std::unexpected(req.error());
     }
 

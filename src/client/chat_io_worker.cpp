@@ -82,6 +82,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
         { .fd = STDIN_FILENO, .events = POLLIN, .revents = 0 },
         { .fd = server_fd.get(), .events = socket_events(), .revents = 0 }
     }};
+    bool stdin_eof = false;
 
     auto hs_init_exp = progress_tls_handshake();
     if(!hs_init_exp) return std::unexpected(hs_init_exp.error());
@@ -95,10 +96,13 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             return std::unexpected(error_code::from_errno(ec));
         }
 
-        if(fds[0].revents & (POLLIN | POLLHUP)){
+        if(!stdin_eof && (fds[0].revents & (POLLIN | POLLHUP))){
             auto send_exp = send_stdin();
             if(!send_exp) return std::unexpected(send_exp.error());
-            if(*send_exp) break;
+            if(*send_exp){
+                stdin_eof = true;
+                fds[0].fd = -1;
+            }
         }
 
         if(fds[1].revents & POLLERR){
@@ -141,6 +145,10 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             }
 
             if(*recv_exp) break;
+        }
+
+        if(stdin_eof && si.tls.is_handshake_done() && !si.send.has_pending()){
+            break;
         }
 
         fds[0].revents = 0;

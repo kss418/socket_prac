@@ -3,12 +3,17 @@
 #include "database/db_connector.hpp"
 #include "database/db_service.hpp"
 #include "net/tls_context.hpp"
-#include <cstdlib>
+#include <csignal>
 #include <filesystem>
 
 int main(){
+#if defined(SIGPIPE)
+    std::signal(SIGPIPE, SIG_IGN);
+#endif
+
     std::filesystem::path root_path = std::filesystem::path(PROJECT_ROOT_DIR);
     std::filesystem::path config_path = root_path / "config/server.conf";
+    std::filesystem::path env_path = root_path / ".env";
 
     auto cfg_exp = config_loader::load_key_value_file(config_path.string());
     if(!cfg_exp){
@@ -16,8 +21,15 @@ int main(){
         return 1;
     }
 
+    auto env_exp = config_loader::load_key_value_file(env_path.string());
+    if(!env_exp){
+        handle_error(".env load failed", env_exp);
+        return 1;
+    }
+
     const config_loader::config_map& cfg = *cfg_exp;
-    auto req_exp = config_loader::check_server_require(cfg);
+    const config_loader::config_map& env = *env_exp;
+    auto req_exp = config_loader::check_server_require(cfg, env);
     if(!req_exp){
         handle_error("missing required config key", req_exp);
         return 1;
@@ -26,10 +38,10 @@ int main(){
     std::string db_host = config_loader::get_or(cfg, "db.host", "127.0.0.1");
     std::string db_port = config_loader::get_or(cfg, "db.port", "5432");
     std::string db_name = config_loader::get_or(cfg, "db.name", "");
-    std::string db_user = config_loader::get_or(cfg, "db.user", "");
-    std::string db_password_env = config_loader::get_or(cfg, "db.password_env", "DB_PASSWORD");
-    const char* db_password_raw = std::getenv(db_password_env.c_str());
-    std::string db_password = db_password_raw == nullptr ? "" : db_password_raw;
+    std::string db_user =
+        config_loader::trim_wrapping_quotes(config_loader::get_or(env, "db.user", ""));
+    std::string db_password =
+        config_loader::trim_wrapping_quotes(config_loader::get_or(env, "db.password", ""));
 
     std::string server_port = config_loader::get_or(cfg, "server.port", "8080");
     std::string tls_cert_raw = config_loader::get_or(cfg, "tls.cert", "");

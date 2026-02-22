@@ -9,3 +9,5 @@ certs/*.csr.pem
 certs/*.srl
 certs/*.ext
 log/
+test_log/
+.env

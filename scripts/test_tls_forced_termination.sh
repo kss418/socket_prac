@@ -2,14 +2,26 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVER_BIN="${ROOT_DIR}/build/server"
-CLIENT_BIN="${ROOT_DIR}/build/client"
-LOG_DIR="${ROOT_DIR}/log"
+CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_tls.conf}"
+source "${ROOT_DIR}/scripts/test_tls_common.sh"
+
+SERVER_BIN="$(resolve_path_from_root "$(cfg_get "test.server_bin" "build/server")")"
+CLIENT_BIN="$(resolve_path_from_root "$(cfg_get "test.client_bin" "build/client")")"
+LOG_DIR="$(resolve_path_from_root "$(cfg_get "test.log_dir" "test_log")")"
+CLIENT_IP="$(cfg_get "test.client_ip" "127.0.0.1")"
+CLIENT_PORT="$(cfg_get "test.client_port" "8080")"
+SERVER_BOOT_WAIT_SEC="$(cfg_get "test.server_boot_wait_sec" "1")"
+POST_CHECK_WAIT_SEC="$(cfg_get "test.post_check_wait_sec" "1")"
+CLIENT_TIMEOUT_SEC="$(cfg_get "test.forced.client_timeout_sec" "10")"
+STDIN_WRITER_SLEEP_SEC="$(cfg_get "test.forced.stdin_writer_sleep_sec" "600")"
+WAIT_TRY="$(cfg_get "test.forced.wait_try" "40")"
+ENV_FILE="$(resolve_path_from_root "$(cfg_get "test.env_file" ".env")")"
+load_env_file "${ENV_FILE}"
 
 mkdir -p "${LOG_DIR}"
-SERVER_LOG="$(mktemp "${LOG_DIR}/tls-server-forced-XXXX.log")"
-CLIENT1_LOG="$(mktemp "${LOG_DIR}/tls-client1-forced-XXXX.log")"
-CLIENT2_LOG="$(mktemp "${LOG_DIR}/tls-client2-forced-XXXX.log")"
+SERVER_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-server-forced" "log")"
+CLIENT1_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-client1-forced" "log")"
+CLIENT2_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-client2-forced" "log")"
 CLIENT1_STDIN_FIFO="$(mktemp -u "${LOG_DIR}/tls-client1-stdin-XXXX.fifo")"
 
 SERVER_PID=""
@@ -99,25 +111,25 @@ else
 fi
 SERVER_PID=$!
 
-sleep 1
+sleep "${SERVER_BOOT_WAIT_SEC}"
 if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
     if contains "db connect failed" "${SERVER_LOG}"; then
-        fail "server exited immediately (db connect failed; check DB or DB_PASSWORD)"
+        fail "server exited immediately (db connect failed; check db.password in .env)"
     fi
     fail "server exited immediately"
 fi
 
 echo "[INFO] running client #1"
 mkfifo "${CLIENT1_STDIN_FIFO}"
-(sleep 600 >"${CLIENT1_STDIN_FIFO}") &
+(sleep "${STDIN_WRITER_SLEEP_SEC}" >"${CLIENT1_STDIN_FIFO}") &
 CLIENT1_WRITER_PID=$!
 
 set +e
-"${CLIENT_BIN}" <"${CLIENT1_STDIN_FIFO}" >"${CLIENT1_LOG}" 2>&1 &
+"${CLIENT_BIN}" "${CLIENT_IP}" "${CLIENT_PORT}" <"${CLIENT1_STDIN_FIFO}" >"${CLIENT1_LOG}" 2>&1 &
 CLIENT1_PID=$!
 set -e
 
-if ! wait_for_log "is connected" "${SERVER_LOG}" 40; then
+if ! wait_for_log "is connected" "${SERVER_LOG}" "${WAIT_TRY}"; then
     fail "client #1 did not connect"
 fi
 
@@ -126,18 +138,18 @@ kill -9 "${CLIENT1_PID}" 2>/dev/null || true
 wait "${CLIENT1_PID}" 2>/dev/null || true
 CLIENT1_PID=""
 
-sleep 1
+sleep "${POST_CHECK_WAIT_SEC}"
 if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
     fail "server crashed after client #1 forced termination"
 fi
 
-if ! wait_for_log "is disconnected" "${SERVER_LOG}" 40; then
+if ! wait_for_log "is disconnected" "${SERVER_LOG}" "${WAIT_TRY}"; then
     fail "server did not log disconnect after client #1 forced termination"
 fi
 
 echo "[INFO] running client #2 to verify reconnection"
 set +e
-timeout 10s bash -lc "\"${CLIENT_BIN}\" < /dev/null" >"${CLIENT2_LOG}" 2>&1
+timeout "${CLIENT_TIMEOUT_SEC}s" "${CLIENT_BIN}" "${CLIENT_IP}" "${CLIENT_PORT}" < /dev/null >"${CLIENT2_LOG}" 2>&1
 CLIENT2_RC=$?
 set -e
 
@@ -145,7 +157,7 @@ if [[ "${CLIENT2_RC}" -ne 0 ]]; then
     fail "client #2 exit code is ${CLIENT2_RC} (expected 0)"
 fi
 
-sleep 1
+sleep "${POST_CHECK_WAIT_SEC}"
 if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
     fail "server crashed after client #2"
 fi
