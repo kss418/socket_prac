@@ -7,6 +7,7 @@
 #include <queue>
 #include <mutex>
 #include <variant>
+#include <cstddef>
 
 class tls_context;
 
@@ -40,6 +41,7 @@ class epoll_registry : public epoll_wakeup{
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
     std::unordered_map <int, socket_info> infos;
+    std::size_t connected_client_count = 0;
     tls_context& tls_ctx;
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);

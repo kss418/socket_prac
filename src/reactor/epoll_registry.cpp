@@ -59,8 +59,11 @@ std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd,
             .ep = std::move(*ep_exp)
         }
     );
+    (void)inserted;
 
+    connected_client_count = infos.size();
     logger::log_info("is connected", it->second);
+    logger::log_info("active clients: " + std::to_string(connected_client_count));
     return fd;
 }
 
@@ -82,6 +85,8 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
     }
 
     infos.erase(it);
+    connected_client_count = infos.size();
+    logger::log_info("active clients: " + std::to_string(connected_client_count));
     return {};
 }
 
