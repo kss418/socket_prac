@@ -35,16 +35,16 @@ std::expected <epoll_server, error_code> epoll_server::create(
     }
 
     return std::expected<epoll_server, error_code>(
-        std::in_place, std::move(*wakeup_exp), std::move(*listen_fd_exp), std::move(tls_ctx), db
+        std::in_place, std::move(*wakeup_exp), std::move(*listen_fd_exp), std::move(tls_ctx), db, port
     );
 }
 
 epoll_server::epoll_server(
-    epoll_wakeup wakeup, epoll_listener listener, tls_context tls_ctx, db_service& db
+    epoll_wakeup wakeup, epoll_listener listener, tls_context tls_ctx, db_service& db, const char* port
 ) : tls_ctx(std::move(tls_ctx)),
     registry(std::move(wakeup), this->tls_ctx),
     listener(std::move(listener)),
-    db_pool(db){}
+    db_pool(db), port(port){}
 
 std::expected <void, error_code> epoll_server::run(){
     std::stop_source stop_source;
@@ -91,6 +91,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         }
     });
 
+    logger::log_info("server is on port:" + port);
     std::stop_callback on_external_stop(stop_token, [&](){ signal_stop(); });
 
     {
@@ -98,6 +99,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
         state_cv.wait(lock, [&](){ return stop_requested; });
     }
 
+    logger::log_info("server is requested stop");
     event_thread.request_stop();
     accept_thread.request_stop();
     registry.request_wakeup();
@@ -106,6 +108,7 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
     accept_thread.join();
 
     if(error_opt) return std::unexpected(*error_opt);
+    logger::log_info("server is stopped");
     return {};
 }
 
@@ -126,7 +129,8 @@ void epoll_server::request_unregister(socket_info& si){
 
 std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_info& si){
     if(si.tls.get() == nullptr) return {};
-    if(si.tls.is_handshake_done()) return {};
+    bool was_handshake_done = si.tls.is_handshake_done();
+    if(was_handshake_done) return {};
 
     auto hs_exp = si.tls.handshake();
     if(!hs_exp){
@@ -145,6 +149,10 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_inf
         logger::log_error("sync_tls_interest failed", "epoll_server::progress_tls_handshake()", si, sync_exp);
         request_unregister(si);
         return std::unexpected(sync_exp.error());
+    }
+
+    if(!was_handshake_done && si.tls.is_handshake_done()){
+        logger::log_info("tls handshake done", si);
     }
 
     return {};

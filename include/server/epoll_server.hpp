@@ -19,6 +19,7 @@ class epoll_server{
     epoll_listener listener;
     thread_pool pool{};
     db_executor db_pool;
+    std::string port;
 
     std::expected <void, error_code> sync_tls_interest(socket_info& si);
     std::expected <void, error_code> progress_tls_handshake(socket_info& si);
@@ -39,7 +40,7 @@ public:
         const char* port, db_service& db, tls_context tls_ctx
     );
     epoll_server(
-        epoll_wakeup wakeup, epoll_listener listener, tls_context tls_ctx, db_service& db
+        epoll_wakeup wakeup, epoll_listener listener, tls_context tls_ctx, db_service& db, const char* port
     );
     std::expected <void, error_code> run();
     std::expected <void, error_code> run(const std::stop_token& stop_token);
