@@ -9,6 +9,7 @@ LOG_DIR="$(resolve_path_from_root "$(cfg_get "suite.log_dir" "test_log")")"
 TLS_CONFIG="$(resolve_path_from_root "$(cfg_get "suite.tls_config" "config/test_tls.conf")")"
 DB_CONFIG="$(resolve_path_from_root "$(cfg_get "suite.db_config" "config/test_db.conf")")"
 FAIL_FAST_RAW="$(cfg_get "suite.fail_fast" "0")"
+TLS_PORT="$(cfg_get_from_file "test.client_port" "8080" "${TLS_CONFIG}")"
 
 RUN_NORMAL_RAW="$(cfg_get "suite.run.normal" "1")"
 RUN_FORCED_RAW="$(cfg_get "suite.run.forced" "1")"
@@ -41,6 +42,39 @@ to_bool() {
 
 is_enabled() {
     [[ "$(to_bool "$1")" == "1" ]]
+}
+
+port_owner_lines() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltnp 2>/dev/null | grep -E "[[:space:]]:${port}[[:space:]]" || true
+        return 0
+    fi
+    return 0
+}
+
+check_tls_port_available() {
+    local need_tls_tests=0
+    if is_enabled "${RUN_NORMAL_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_FORCED_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_MISMATCH_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_EXPIRED_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_PLAINTEXT_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_STRESS_RAW}"; then need_tls_tests=1; fi
+    if is_enabled "${RUN_LONGRUN_RAW}"; then need_tls_tests=1; fi
+    if [[ "${need_tls_tests}" -eq 0 ]]; then
+        return 0
+    fi
+
+    local owners
+    owners="$(port_owner_lines "${TLS_PORT}")"
+    if [[ -n "${owners}" ]]; then
+        echo "[FAIL] TLS test port already in use: ${TLS_PORT}" | tee -a "${SUITE_LOG}"
+        echo "[INFO] port owner(s):" | tee -a "${SUITE_LOG}"
+        echo "${owners}" | tee -a "${SUITE_LOG}"
+        echo "[INFO] stop the process above or change test.client_port/server.port before retry" | tee -a "${SUITE_LOG}"
+        exit 1
+    fi
 }
 
 FAIL_FAST="$(to_bool "${FAIL_FAST_RAW}")"
@@ -126,6 +160,9 @@ echo "[INFO] suite config: ${CONFIG_FILE}" | tee -a "${SUITE_LOG}"
 echo "[INFO] tls config: ${TLS_CONFIG}" | tee -a "${SUITE_LOG}"
 echo "[INFO] db config: ${DB_CONFIG}" | tee -a "${SUITE_LOG}"
 echo "[INFO] fail_fast: ${FAIL_FAST}" | tee -a "${SUITE_LOG}"
+echo "[INFO] tls port: ${TLS_PORT}" | tee -a "${SUITE_LOG}"
+
+check_tls_port_available
 
 if is_enabled "${RUN_NORMAL_RAW}"; then
     run_test "tls-normal" "${ROOT_DIR}/scripts/test_tls_normal_connection.sh" "${TLS_CONFIG}" || true

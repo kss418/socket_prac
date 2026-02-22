@@ -38,7 +38,8 @@ std::expected <void, error_code> epoll_utility::del_fd(int epfd, int fd){
     return {};
 }
 
-std::expected <void, error_code> epoll_utility::update_interest(int epfd, int fd, socket_info& si, uint32_t interest){
+std::expected <void, error_code> epoll_utility::update_interest(int epfd, socket_info& si, uint32_t interest){
+    int fd = si.ufd.get();
     si.interest = interest;
     epoll_event ev{};
     ev.events = interest;

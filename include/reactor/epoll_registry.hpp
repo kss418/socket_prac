@@ -44,12 +44,8 @@ class epoll_registry : public epoll_wakeup{
 
     std::expected <int, error_code> register_fd(unique_fd fd, uint32_t interest);
     std::expected <void, error_code> unregister_fd(int fd);
-    std::expected <void, error_code> sync_interest(int fd, socket_info& si);
-    std::expected <void, error_code> append_send(
-        int fd,
-        socket_info& si,
-        const command_codec::command& cmd
-    );
+    std::expected <void, error_code> sync_interest(socket_info& si);
+    std::expected <void, error_code> append_send(socket_info& si, const command_codec::command& cmd);
 
     void handle_command(register_command&& cmd);
     void handle_command(const unregister_command& cmd);
@@ -68,9 +64,13 @@ public:
 
     void request_register(unique_fd fd, uint32_t interest);
     void request_unregister(int fd);
+    void request_unregister(socket_info& si);
     void request_send(int fd, command_codec::command cmd);
+    void request_send(socket_info& si, command_codec::command cmd);
     void request_broadcast(int send_fd, command_codec::command cmd);
+    void request_broadcast(socket_info& si, command_codec::command cmd);
     void request_change_nickname(int send_fd, std::string nick);
+    void request_change_nickname(socket_info& si, std::string nick);
 
     void work();
 

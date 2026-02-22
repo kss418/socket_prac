@@ -138,7 +138,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
             while(auto line = line_parser::parse_line(si.recv)){
                 auto dec_exp = command_codec::decode(*line);
                 if(!dec_exp){
-                    logger::log_warn("command_codec/decode failed", "chat_io_worker::run()", dec_exp);
+                    logger::log_warn("command_codec/decode failed", "chat_io_worker::run()", si, dec_exp);
                     continue;
                 }
 
@@ -158,7 +158,7 @@ std::expected<void, error_code> chat_io_worker::run(std::stop_token stop_token){
 
     if(si.tls.is_handshake_done() && !si.tls.is_closed()){
         auto shutdown_exp = si.tls.shutdown();
-        if(!shutdown_exp) logger::log_warn("tls shutdown failed", "chat_io_worker::run()", shutdown_exp);
+        if(!shutdown_exp) logger::log_warn("tls shutdown failed", "chat_io_worker::run()", si, shutdown_exp);
     }
 
     return {};

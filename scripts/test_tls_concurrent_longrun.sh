@@ -100,10 +100,11 @@ count_matches() {
 count_positive_send_lines() {
     local file="$1"
     local out=""
+    local pattern="(send[s]?|recv[s]?) [1-9][0-9]* byte(s|\\(s\\))?"
     if [[ "${SEARCH_BIN}" == "rg" ]]; then
-        out="$(rg -c "sends [1-9][0-9]* byte" "${file}" 2>/dev/null || true)"
+        out="$(rg -c "${pattern}" "${file}" 2>/dev/null || true)"
     else
-        out="$(grep -E -c "sends [1-9][0-9]* byte" "${file}" 2>/dev/null || true)"
+        out="$(grep -E -c "${pattern}" "${file}" 2>/dev/null || true)"
     fi
     if [[ -z "${out}" ]]; then
         echo "0"

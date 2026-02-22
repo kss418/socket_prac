@@ -41,7 +41,7 @@ void epoll_wakeup::request_wakeup() const{
     if(n == -1){
         int ec = errno;
         if(ec == EAGAIN) return;
-        logger::log_warn("::write() failed", "epoll_wakeup::request_wakeup()", error_code::from_errno(ec));
+        logger::log_error("::write() failed", "epoll_wakeup::request_wakeup()", error_code::from_errno(ec));
     }
 }
 
@@ -52,7 +52,7 @@ void epoll_wakeup::consume_wakeup() const{
         if(n == -1){
             int ec = errno;
             if(ec == EAGAIN) return;
-            logger::log_warn("::read() failed", "consume_wakeup::request_wakeup()", error_code::from_errno(ec));
+            logger::log_error("::read() failed", "epoll_wakeup::consume_wakeup()", error_code::from_errno(ec));
             return;
         }
         if(n == 0) return;

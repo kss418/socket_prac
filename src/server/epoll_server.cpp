@@ -110,19 +110,18 @@ std::expected <void, error_code> epoll_server::run(const std::stop_token& stop_t
 }
 
 std::expected <void, error_code> epoll_server::sync_tls_interest(socket_info& si){
-    int fd = si.ufd.get();
     uint32_t next_interest = si.interest;
     if(si.send.has_pending() || si.tls.needs_write()) next_interest |= EPOLLOUT;
     else next_interest &= ~EPOLLOUT;
 
     if(next_interest == si.interest) return {};
-    auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), fd, si, next_interest);
+    auto mod_ep_exp = epoll_utility::update_interest(registry.get_epfd(), si, next_interest);
     if(!mod_ep_exp) return std::unexpected(mod_ep_exp.error());
     return {};
 }
 
 void epoll_server::request_unregister(socket_info& si){
-    registry.request_unregister(si.ufd.get());
+    registry.request_unregister(si);
 }
 
 std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_info& si){
@@ -131,7 +130,7 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_inf
 
     auto hs_exp = si.tls.handshake();
     if(!hs_exp){
-        logger::log_error(to_string(si.ep) + "tls_handshake failed", "epoll_server::progress_tls_handshake()", hs_exp);
+        logger::log_error("tls_handshake failed", "epoll_server::progress_tls_handshake()", si, hs_exp);
         request_unregister(si);
         return std::unexpected(hs_exp.error());
     }
@@ -143,7 +142,7 @@ std::expected <void, error_code> epoll_server::progress_tls_handshake(socket_inf
 
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        logger::log_error(to_string(si.ep) + "sync_tls_interest failed", "epoll_server::progress_tls_handshake()", sync_exp);
+        logger::log_error("sync_tls_interest failed", "epoll_server::progress_tls_handshake()", si, sync_exp);
         request_unregister(si);
         return std::unexpected(sync_exp.error());
     }
@@ -158,14 +157,16 @@ void epoll_server::handle_send(socket_info& si){
 
     auto fs_exp = flush_send(si);
     if(!fs_exp){
-        logger::log_error("flush_send failed", "epoll_server::handle_send()", fs_exp);
+        logger::log_error("flush_send failed", "epoll_server::handle_send()", si, fs_exp);
         request_unregister(si);
         return; 
     }
 
+    logger::log_info("send " + std::to_string(*fs_exp) + " byte" + (*fs_exp == 1 ? "" : "s"), si);
+
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        logger::log_error("sync_tls_interest failed", "epoll_server::handle_send()", sync_exp);
+        logger::log_error("sync_tls_interest failed", "epoll_server::handle_send()", si, sync_exp);
         request_unregister(si);
     }
 }
@@ -177,18 +178,17 @@ bool epoll_server::handle_recv(socket_info& si, uint32_t event){
 
     auto dr_exp = drain_recv(si);
     if(!dr_exp){
-        logger::log_error(to_string(si.ep) + "drain_recv failed", "epoll_server::handle_recv()", dr_exp);
+        logger::log_error("drain_recv failed", "epoll_server::handle_recv()", si, dr_exp);
         request_unregister(si);
         return false;
     }
 
     auto recv_info = *dr_exp;
-    std::cout << to_string(si.ep) << " sends " << recv_info.byte 
-        << " byte" << (recv_info.byte == 1 ? "\n" : "s\n");
+    logger::log_info("recv " + std::to_string(recv_info.byte) + " byte" + (recv_info.byte == 1 ? "" : "s"), si);
 
     auto sync_exp = sync_tls_interest(si);
     if(!sync_exp){
-        logger::log_error("sync_tls_interest failed", "epoll_server::handle_recv()", sync_exp);
+        logger::log_error("sync_tls_interest failed", "epoll_server::handle_recv()", si, sync_exp);
         request_unregister(si);
         return false;
     }
@@ -205,11 +205,11 @@ void epoll_server::handle_close(socket_info& si){
     if(si.tls.is_handshake_done() && !si.tls.is_closed()){
         auto shutdown_exp = si.tls.shutdown();
         if(!shutdown_exp){
-            logger::log_warn("tls_shutdown failed", "epoll_server::handle_close()", shutdown_exp);
+            logger::log_warn("tls_shutdown failed", "epoll_server::handle_close()", si, shutdown_exp);
         }
     }
 
-    std::cout << to_string(si.ep) << " is disconnected" << "\n";
+    logger::log_info("is disconnected", si);
     request_unregister(si);
 }
 
@@ -221,7 +221,7 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
 
     if(it->second.tls.is_handshake_done()){
         auto shutdown_exp = it->second.tls.shutdown();
-        if(!shutdown_exp) logger::log_warn("shutdown_failed", "epoll_server::handle_client_error", shutdown_exp);
+        if(!shutdown_exp) logger::log_warn("shutdown_failed", "epoll_server::handle_client_error()", it->second, shutdown_exp);
     }
 
     int ec = ECONNRESET;
@@ -234,42 +234,41 @@ void epoll_server::handle_client_error(int fd, uint32_t event){
         ec = so_error;
     }
 
-    logger::log_error("handle_error", "epoll_server::handle_client_error", error_code::from_errno(ec));
+    logger::log_error("client_error", "epoll_server::handle_client_error()", it->second, error_code::from_errno(ec));
     request_unregister(it->second);
 }
 
 bool epoll_server::handle_execute(socket_info& si){
-    int fd = si.ufd.get();
     auto line = line_parser::parse_line(si.recv);
     if(!line) return false;
 
     auto dec_exp = command_codec::decode(*line);
     if(!dec_exp){
-        logger::log_error("decode failed", "epoll_server::handle_execute()", dec_exp);
+        logger::log_warn("decode failed", "epoll_server::handle_execute()", si, dec_exp);
         return true;
     }
 
     auto cmd = std::move(*dec_exp);
     if(db_executor::is_db_command(cmd)){
-        return db_pool.enqueue(std::move(cmd), registry, fd);
+        return db_pool.enqueue(std::move(cmd), registry, si);
     }
 
     if(thread_pool::is_pool_command(cmd)){
-        return pool.enqueue(std::move(cmd), registry, fd);
+        return pool.enqueue(std::move(cmd), registry, si);
     }
 
-    std::visit([this, fd](auto&& c){
+    std::visit([this, &si](auto&& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, command_codec::cmd_say>){
-            registry.request_broadcast(fd, command_codec::cmd_response{c.text});
+            registry.request_broadcast(si, command_codec::cmd_response{c.text});
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_nick>){
-            registry.request_change_nickname(fd, c.nick);
+            registry.request_change_nickname(si, c.nick);
         }
 
         if constexpr (std::is_same_v<T, command_codec::cmd_response>){
-            registry.request_send(fd, command_codec::cmd_response{c.text});
+            registry.request_send(si, command_codec::cmd_response{c.text});
         }
     }, std::move(cmd));
 

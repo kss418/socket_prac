@@ -74,10 +74,10 @@ std::expected <void, error_code> chat_client::run(){
         signal_stop();
     });
 
-    std::jthread io_thread([&io_worker, &signal_stop](std::stop_token st){
+    std::jthread io_thread([this, &io_worker, &signal_stop](std::stop_token st){
         auto io_exp = io_worker.run(st);
         if(!io_exp){
-            logger::log_error("io_thread error", "chat_client::run()", io_exp);
+            logger::log_error("io_thread error", "chat_client::run()", si, io_exp);
             signal_stop(io_exp.error());
         }
         else signal_stop();

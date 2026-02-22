@@ -44,6 +44,10 @@ bool db_executor::enqueue(command_codec::command cmd, epoll_registry& reg, int f
     return true;
 }
 
+bool db_executor::enqueue(command_codec::command cmd, epoll_registry& reg, socket_info& si){
+    return enqueue(std::move(cmd), reg, si.ufd.get());
+}
+
 void db_executor::worker_loop(std::stop_token st){
     while(true){
         std::optional<task> task_opt;
@@ -74,7 +78,7 @@ void db_executor::execute_command(
 ){
     auto login_exp = db.login(cmd.id, cmd.pw);
     if(!login_exp){
-        logger::log_warn("login failed", "db_executor::execute_command()", login_exp.error());
+        logger::log_error("login failed", "db_executor::execute_command()", login_exp.error());
         reg.request_send(fd, command_codec::cmd_response{"login failed"});
         return;
     }
@@ -89,7 +93,7 @@ void db_executor::execute_command(
 ){
     auto signup_exp = db.signup(cmd.id, cmd.pw);
     if(!signup_exp){
-        logger::log_warn("register failed", "db_executor::execute_command", signup_exp.error());
+        logger::log_error("register failed", "db_executor::execute_command", signup_exp.error());
         reg.request_send(fd, command_codec::cmd_response{"register failed"});
         return;
         

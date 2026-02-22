@@ -42,4 +42,5 @@ public:
     static bool is_db_command(const command_codec::command& cmd) noexcept;
     void stop();
     bool enqueue(command_codec::command cmd, epoll_registry& reg, int fd);
+    bool enqueue(command_codec::command cmd, epoll_registry& reg, socket_info& si);
 };

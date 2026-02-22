@@ -39,6 +39,10 @@ bool thread_pool::enqueue(command_codec::command cmd, epoll_registry& reg, int f
     return true;
 }
 
+bool thread_pool::enqueue(command_codec::command cmd, epoll_registry& reg, socket_info& si){
+    return enqueue(std::move(cmd), reg, si.ufd.get());
+}
+
 void thread_pool::worker_loop(std::stop_token st){
     while(true){
         std::optional<task> task_opt;

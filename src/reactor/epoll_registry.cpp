@@ -60,7 +60,7 @@ std::expected <int, error_code> epoll_registry::register_fd(unique_fd client_fd,
         }
     );
 
-    std::cout << to_string(it->second.ep) << " is connected" << "\n";
+    logger::log_info("is connected", it->second);
     return fd;
 }
 
@@ -78,15 +78,16 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
         const error_code& ec = del_ep_exp.error();
         bool ignorable = ec.domain == error_domain::errno_domain
             && (ec.code == ENOENT || ec.code == EBADF);
-        if(!ignorable) logger::log_error("del_fd failed", "epoll_registry::unregister_fd()", del_ep_exp);
+        if(!ignorable) logger::log_error("del_fd failed", "epoll_registry::unregister_fd()", it->second, del_ep_exp);
     }
 
     infos.erase(it);
     return {};
 }
 
-std::expected <void, error_code> epoll_registry::sync_interest(int fd, socket_info& si){
-    auto mod_exp = epoll_utility::update_interest(epfd.get(), fd, si, si.interest);
+std::expected <void, error_code> epoll_registry::sync_interest(socket_info& si){
+    int fd = si.ufd.get();
+    auto mod_exp = epoll_utility::update_interest(epfd.get(), si, si.interest);
     if(!mod_exp){
         unregister_fd(fd);
         return std::unexpected(mod_exp.error());
@@ -95,16 +96,15 @@ std::expected <void, error_code> epoll_registry::sync_interest(int fd, socket_in
 }
 
 std::expected <void, error_code> epoll_registry::append_send(
-    int fd,
     socket_info& si,
     const command_codec::command& cmd
 ){
     if(!si.send.append(cmd)) return {};
 
     si.interest |= EPOLLOUT;
-    auto sync_exp = sync_interest(fd, si);
+    auto sync_exp = sync_interest(si);
     if(!sync_exp){
-        logger::log_warn("sync_interest failed", "epoll_registry::append_send()", sync_exp);
+        logger::log_warn("sync_interest failed", "epoll_registry::append_send()", si, sync_exp);
         return std::unexpected(sync_exp.error());
     }
 
@@ -127,12 +127,20 @@ void epoll_registry::request_unregister(int fd){
     request_wakeup();
 }
 
+void epoll_registry::request_unregister(socket_info& si){
+    request_unregister(si.ufd.get());
+}
+
 void epoll_registry::request_send(int fd, command_codec::command cmd){ 
     {
         std::lock_guard<std::mutex> lock(cmd_mtx);
         cmd_q.emplace(send_one_command{fd, std::move(cmd)});
     }
     request_wakeup();
+}
+
+void epoll_registry::request_send(socket_info& si, command_codec::command cmd){
+    request_send(si.ufd.get(), std::move(cmd));
 }
 
 void epoll_registry::request_broadcast(int send_fd, command_codec::command cmd){ 
@@ -143,6 +151,10 @@ void epoll_registry::request_broadcast(int send_fd, command_codec::command cmd){
     request_wakeup();
 }
 
+void epoll_registry::request_broadcast(socket_info& si, command_codec::command cmd){
+    request_broadcast(si.ufd.get(), std::move(cmd));
+}
+
 void epoll_registry::request_change_nickname(int send_fd, std::string nick){ 
     {
         std::lock_guard<std::mutex> lock(cmd_mtx);
@@ -151,14 +163,16 @@ void epoll_registry::request_change_nickname(int send_fd, std::string nick){
     request_wakeup();
 }
 
+void epoll_registry::request_change_nickname(socket_info& si, std::string nick){
+    request_change_nickname(si.ufd.get(), std::move(nick));
+}
+
 void epoll_registry::handle_command(register_command&& cmd){
     auto reg_exp = register_fd(std::move(cmd.fd), cmd.interest);
-    if(!reg_exp) logger::log_warn("register_command failed", "epoll_registry::handle_command()", reg_exp);
 }
 
 void epoll_registry::handle_command(const unregister_command& cmd){
     auto unreg_exp = unregister_fd(cmd.fd);
-    if(!unreg_exp) logger::log_warn("unregister_command failed", "epoll_registry::handle_command()", unreg_exp);
 }
 
 void epoll_registry::handle_command(send_one_command&& cmd){
@@ -166,7 +180,7 @@ void epoll_registry::handle_command(send_one_command&& cmd){
     if(it == infos.end()) return;
 
     auto& si = it->second;
-    auto append_exp = append_send(cmd.fd, si, cmd.cmd);
+    auto append_exp = append_send(si, cmd.cmd);
     if(!append_exp) return;
 }
 
@@ -181,14 +195,14 @@ void epoll_registry::handle_command(broadcast_command&& cmd){
         command_codec::command named_msg =
             command_codec::cmd_response{nickname + ": " + response->text};
         for(auto& [fd, si] : infos){
-            auto append_exp = append_send(fd, si, named_msg);
+            auto append_exp = append_send(si, named_msg);
             if(!append_exp) continue;
         }
         return;
     }
 
     for(auto& [fd, si] : infos){
-        auto append_exp = append_send(fd, si, cmd.cmd);
+        auto append_exp = append_send(si, cmd.cmd);
         if(!append_exp) continue;
     }
 }

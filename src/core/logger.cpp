@@ -1,5 +1,6 @@
 #include "core/logger.hpp"
 #include "core/error_code.hpp"
+#include "net/io_helper.hpp"
 
 #include <atomic>
 #include <iostream>
@@ -34,6 +35,29 @@ namespace logger{
                   << "\n";
     }
 
+    static void log_line(std::string_view level_name, std::string_view msg, std::string_view function, const socket_info& si){
+        std::clog << "[" << level_name << "] "
+                  << "[" << function << "] "
+                  << "[" << ::to_string(si.ep) << "] "
+                  << msg << "\n";
+    }
+
+    static void log_line(std::string_view level_name, std::string_view msg, const socket_info& si){
+        std::clog << "[" << level_name << "] "
+                  << "[" << ::to_string(si.ep) << "] "
+                  << msg << "\n";
+    }
+
+    static void log_line(std::string_view level_name, std::string_view msg, std::string_view function, const socket_info& si, const error_code& ec){
+        std::clog << "[" << level_name << "] "
+                  << "[" << function << "] "
+                  << "[" << ::to_string(si.ep) << "] "
+                  << msg
+                  << " "
+                  << ::to_string(ec)
+                  << "\n";
+    }
+
     void set_log_level(log_level level){
         g_log_level.store(static_cast<int>(level), std::memory_order_relaxed);
     }
@@ -48,12 +72,15 @@ namespace logger{
     void log_debug(std::string_view location, std::string_view function, std::string_view msg){
         if(should_log(log_level::debug)) log_line("DEBUG", location, function, msg);
     }
+    void log_debug(std::string_view msg, std::string_view function, const socket_info& si){
+        if(should_log(log_level::debug)) log_line("DEBUG", msg, function, si);
+    }
 
     void log_info(std::string_view msg){
         if(should_log(log_level::info)) log_line("INFO", msg);
     }
-    void log_info(std::string_view location, std::string_view function, std::string_view msg){
-        if(should_log(log_level::info)) log_line("INFO", location, function, msg);
+    void log_info(std::string_view msg, const socket_info& si){
+        if(should_log(log_level::info)) log_line("INFO", msg, si);
     }
 
     void log_warn(const error_code& ec){
@@ -63,6 +90,9 @@ namespace logger{
     void log_warn(std::string_view msg, std::string_view function, const error_code& ec){
         if(should_log(log_level::warn)) log_line("WARN", msg, function, ec);
     }
+    void log_warn(std::string_view msg, std::string_view function, const socket_info& si, const error_code& ec){
+        if(should_log(log_level::warn)) log_line("WARN", msg, function, si, ec);
+    }
 
     void log_error(const error_code& ec){
         if(should_log(log_level::error)) log_line("ERROR", ec);
@@ -70,5 +100,8 @@ namespace logger{
 
     void log_error(std::string_view msg, std::string_view function, const error_code& ec){
         if(should_log(log_level::error)) log_line("ERROR", msg, function, ec);
+    }
+    void log_error(std::string_view msg, std::string_view function, const socket_info& si, const error_code& ec){
+        if(should_log(log_level::error)) log_line("ERROR", msg, function, si, ec);
     }
 }
