@@ -46,6 +46,7 @@ struct socket_info{
     recv_buffer recv;
     send_buffer send;
     tls_session tls;
+    bool is_closed = false;
     uint32_t interest = 0;
     unique_fd ufd;
     endpoint ep;

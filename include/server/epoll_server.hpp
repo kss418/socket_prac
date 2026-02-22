@@ -23,6 +23,7 @@ class epoll_server{
 
     std::expected <void, error_code> sync_tls_interest(socket_info& si);
     std::expected <void, error_code> progress_tls_handshake(socket_info& si);
+    void handle_disconnect(socket_info& si);
     void request_unregister(socket_info& si);
     void handle_send(socket_info& si);
     bool handle_recv(socket_info& si, uint32_t event);
