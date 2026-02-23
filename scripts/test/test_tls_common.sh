@@ -81,7 +81,14 @@ load_env_file() {
         return 0
     fi
 
-    while IFS= read -r line || [[ -n "${line}" ]]; do
+    local line=""
+    local key=""
+    local value=""
+    local first=""
+    local last=""
+
+    exec 9< "${env_file}"
+    while IFS= read -r line <&9 || [[ -n "${line}" ]]; do
         # trim leading/trailing spaces
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
@@ -90,16 +97,16 @@ load_env_file() {
         [[ "${line}" == \#* ]] && continue
         [[ "${line}" != *=* ]] && continue
 
-        local key="${line%%=*}"
-        local value="${line#*=}"
+        key="${line%%=*}"
+        value="${line#*=}"
         key="${key#"${key%%[![:space:]]*}"}"
         key="${key%"${key##*[![:space:]]}"}"
         value="${value#"${value%%[![:space:]]*}"}"
         value="${value%"${value##*[![:space:]]}"}"
 
         if [[ ${#value} -ge 2 ]]; then
-            local first="${value:0:1}"
-            local last="${value: -1}"
+            first="${value:0:1}"
+            last="${value: -1}"
             if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
                 value="${value:1:${#value}-2}"
             fi
@@ -110,5 +117,8 @@ load_env_file() {
             continue
         fi
         export "${key}=${value}"
-    done < "${env_file}"
+    done
+    exec 9<&-
+
+    return 0
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_db.conf}"
-source "${ROOT_DIR}/scripts/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
 
 SERVER_CONFIG="$(resolve_path_from_root "$(cfg_get "test.db.server_config" "config/server.conf")")"
 LOG_DIR="$(resolve_path_from_root "$(cfg_get "test.db.log_dir" "test_log")")"
@@ -26,6 +26,31 @@ info() {
     echo "[INFO] $1"
 }
 
+conn_quote() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\'/\\\'}"
+    echo "${s}"
+}
+
+build_conninfo() {
+    local host="$1"
+    local port="$2"
+    local user="$3"
+    local db="$4"
+    local password="$5"
+    local sslmode="$6"
+    local connect_timeout="$7"
+    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
+        "${host}" \
+        "${port}" \
+        "${user}" \
+        "${db}" \
+        "${password}" \
+        "${sslmode}" \
+        "${connect_timeout}"
+}
+
 trim_wrapping_quotes() {
     local s="$1"
     if [[ ${#s} -ge 2 ]]; then
@@ -40,10 +65,8 @@ trim_wrapping_quotes() {
 
 psql_exec() {
     local sql="$1"
-    PGPASSWORD="${DB_PASSWORD}" \
-    PGCONNECT_TIMEOUT="${CONNECT_TIMEOUT_SEC}" \
-    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "${sql}" 2>>"${DB_LOG}"
+    psql "${DB_CONNINFO}" \
+        --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "${sql}"
 }
 
 [[ -f "${SERVER_CONFIG}" ]] || fail "server config not found: ${SERVER_CONFIG}"
@@ -52,6 +75,7 @@ command -v psql >/dev/null 2>&1 || fail "psql command not found"
 DB_HOST="$(cfg_get_from_file "db.host" "127.0.0.1" "${SERVER_CONFIG}")"
 DB_PORT="$(cfg_get_from_file "db.port" "5432" "${SERVER_CONFIG}")"
 DB_NAME="$(cfg_get_from_file "db.name" "" "${SERVER_CONFIG}")"
+DB_SSLMODE="$(cfg_get_from_file "db.sslmode" "disable" "${SERVER_CONFIG}")"
 DB_USER="$(cfg_get_from_file "db.user" "" "${ENV_FILE}")"
 DB_PASSWORD="$(cfg_get_from_file "db.password" "" "${ENV_FILE}")"
 
@@ -66,8 +90,11 @@ if [[ -z "${DB_PASSWORD}" ]]; then
 fi
 
 [[ -n "${DB_NAME}" ]] || fail "db.name is missing in ${SERVER_CONFIG}"
+[[ -n "${DB_SSLMODE}" ]] || DB_SSLMODE="disable"
 [[ -n "${DB_USER}" ]] || fail "db.user is missing in ${ENV_FILE}"
 [[ -n "${DB_PASSWORD}" ]] || fail "db.password is missing in ${ENV_FILE}"
+
+DB_CONNINFO="$(build_conninfo "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_NAME}" "${DB_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
 
 RUN_ID="$(date '+%Y%m%d_%H%M%S')_${RANDOM}"
 USER_A="fr_a_${RUN_ID}"

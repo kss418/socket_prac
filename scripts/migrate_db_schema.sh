@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${ROOT_DIR}/scripts/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
 
 SERVER_CONFIG_RAW="${1:-config/server.conf}"
 ENV_FILE_RAW="${2:-.env}"
@@ -28,6 +28,35 @@ fail() {
 
 info() {
     echo "[INFO] $1"
+}
+
+warn() {
+    echo "[WARN] $1"
+}
+
+conn_quote() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\'/\\\'}"
+    echo "${s}"
+}
+
+build_conninfo() {
+    local host="$1"
+    local port="$2"
+    local user="$3"
+    local db="$4"
+    local password="$5"
+    local sslmode="$6"
+    local connect_timeout="$7"
+    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
+        "${host}" \
+        "${port}" \
+        "${user}" \
+        "${db}" \
+        "${password}" \
+        "${sslmode}" \
+        "${connect_timeout}"
 }
 
 trim_wrapping_quotes() {
@@ -61,31 +90,87 @@ command -v psql >/dev/null 2>&1 || fail "psql command not found"
 DB_HOST="$(cfg_get_from_file "db.host" "127.0.0.1" "${SERVER_CONFIG}")"
 DB_PORT="$(cfg_get_from_file "db.port" "5432" "${SERVER_CONFIG}")"
 DB_NAME="$(cfg_get_from_file "db.name" "" "${SERVER_CONFIG}")"
-DB_USER="$(trim_wrapping_quotes "$(cfg_get_from_file "db.user" "" "${ENV_FILE}")")"
-DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db.password" "" "${ENV_FILE}")")"
+DB_SSLMODE="$(cfg_get_from_file "db.sslmode" "disable" "${SERVER_CONFIG}")"
+APP_DB_USER="$(trim_wrapping_quotes "$(cfg_get_from_file "db.user" "" "${ENV_FILE}")")"
+APP_DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db.password" "" "${ENV_FILE}")")"
 
-if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db_password" "" "${ENV_FILE}")")"
+if [[ -z "${APP_DB_PASSWORD}" ]]; then
+    APP_DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db_password" "" "${ENV_FILE}")")"
 fi
-if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "DB_PASSWORD" "" "${ENV_FILE}")")"
+if [[ -z "${APP_DB_PASSWORD}" ]]; then
+    APP_DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "DB_PASSWORD" "" "${ENV_FILE}")")"
+fi
+
+MIGRATE_DB_USER="$(trim_wrapping_quotes "$(cfg_get_from_file "db.admin_user" "${APP_DB_USER}" "${ENV_FILE}")")"
+MIGRATE_DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db.admin_password" "" "${ENV_FILE}")")"
+if [[ -z "${MIGRATE_DB_PASSWORD}" ]]; then
+    MIGRATE_DB_PASSWORD="${APP_DB_PASSWORD}"
 fi
 
 [[ -n "${DB_NAME}" ]] || fail "db.name is missing in ${SERVER_CONFIG}"
-[[ -n "${DB_USER}" ]] || fail "db.user is missing in ${ENV_FILE}"
-[[ -n "${DB_PASSWORD}" ]] || fail "db.password is missing in ${ENV_FILE}"
+[[ -n "${DB_SSLMODE}" ]] || DB_SSLMODE="disable"
+[[ -n "${APP_DB_USER}" ]] || fail "db.user is missing in ${ENV_FILE}"
+[[ -n "${APP_DB_PASSWORD}" ]] || fail "db.password is missing in ${ENV_FILE}"
+[[ -n "${MIGRATE_DB_USER}" ]] || fail "db.admin_user is missing in ${ENV_FILE}"
+[[ -n "${MIGRATE_DB_PASSWORD}" ]] || fail "db.admin_password is missing in ${ENV_FILE}"
 
 CREATE_DB="$(to_bool "${CREATE_DB_RAW}")"
 ADMIN_DB="${ADMIN_DB_RAW}"
+MIGRATE_USE_PEER_AUTH=0
+
+is_local_migrate_host() {
+    [[ "${DB_HOST}" == "127.0.0.1" || "${DB_HOST}" == "localhost" || -z "${DB_HOST}" ]]
+}
+
+psql_exec_password() {
+    local db="$1"
+    shift
+    local conninfo
+    conninfo="$(build_conninfo "${DB_HOST}" "${DB_PORT}" "${MIGRATE_DB_USER}" "${db}" "${MIGRATE_DB_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
+    psql "${conninfo}" \
+        --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+}
+
+psql_as_postgres_peer() {
+    if [[ "$(id -u)" -eq 0 ]]; then
+        runuser -u postgres -- psql --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+        return $?
+    fi
+    if command -v sudo >/dev/null 2>&1 && sudo -n -u postgres true >/dev/null 2>&1; then
+        sudo -n -u postgres psql --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+        return $?
+    fi
+    return 1
+}
+
+psql_exec_peer() {
+    local db="$1"
+    shift
+    psql_as_postgres_peer -d "${db}" "$@"
+}
 
 psql_exec() {
     local db="$1"
     shift
-    PGPASSWORD="${DB_PASSWORD}" \
-    PGCONNECT_TIMEOUT="${CONNECT_TIMEOUT_SEC}" \
-    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${db}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+    if [[ "${MIGRATE_USE_PEER_AUTH}" == "1" ]]; then
+        psql_exec_peer "${db}" "$@"
+        return $?
+    fi
+    psql_exec_password "${db}" "$@"
 }
+
+if ! psql_exec_password "${ADMIN_DB}" -tA -c "SELECT 1;" >/dev/null 2>&1; then
+    if [[ "${MIGRATE_DB_USER}" == "postgres" ]] && is_local_migrate_host; then
+        if psql_exec_peer "${ADMIN_DB}" -tA -c "SELECT 1;" >/dev/null 2>&1; then
+            MIGRATE_USE_PEER_AUTH=1
+            warn "admin password auth failed; using local peer auth for postgres"
+        else
+            fail "admin password auth failed; peer auth fallback also failed (check db.admin_password or local sudo/root access)"
+        fi
+    else
+        fail "admin password auth failed (check db.admin_user/db.admin_password and db.host)"
+    fi
+fi
 
 if [[ "${CREATE_DB}" == "1" ]]; then
     info "checking database exists: ${DB_NAME}"
@@ -102,7 +187,7 @@ if [[ "${CREATE_DB}" == "1" ]]; then
     fi
 fi
 
-info "applying schema migrations to ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+info "applying schema migrations to ${MIGRATE_DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 psql_exec "${DB_NAME}" <<'SQL'
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS social;

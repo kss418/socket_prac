@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_suite.conf}"
-source "${ROOT_DIR}/scripts/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
 
 LOG_DIR="$(resolve_path_from_root "$(cfg_get "suite.log_dir" "test_log")")"
 TLS_CONFIG="$(resolve_path_from_root "$(cfg_get "suite.tls_config" "config/test_tls.conf")")"
@@ -58,6 +58,31 @@ trim_wrapping_quotes() {
         fi
     fi
     echo "${v}"
+}
+
+conn_quote() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\'/\\\'}"
+    echo "${s}"
+}
+
+build_conninfo() {
+    local host="$1"
+    local port="$2"
+    local user="$3"
+    local db="$4"
+    local password="$5"
+    local sslmode="$6"
+    local connect_timeout="$7"
+    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
+        "${host}" \
+        "${port}" \
+        "${user}" \
+        "${db}" \
+        "${password}" \
+        "${sslmode}" \
+        "${connect_timeout}"
 }
 
 single_line() {
@@ -132,10 +157,11 @@ check_required_file() {
 }
 
 check_db_ready() {
-    local db_host db_port db_name db_user db_password db_result db_rc
+    local db_host db_port db_name db_sslmode db_user db_password db_conninfo db_result db_rc
     db_host="$(cfg_get_from_file "db.host" "127.0.0.1" "${SERVER_CONFIG}")"
     db_port="$(cfg_get_from_file "db.port" "5432" "${SERVER_CONFIG}")"
     db_name="$(cfg_get_from_file "db.name" "" "${SERVER_CONFIG}")"
+    db_sslmode="$(cfg_get_from_file "db.sslmode" "disable" "${SERVER_CONFIG}")"
     db_user="$(trim_wrapping_quotes "$(cfg_get_from_file "db.user" "" "${ENV_FILE}")")"
     db_password="$(trim_wrapping_quotes "$(cfg_get_from_file "db.password" "" "${ENV_FILE}")")"
 
@@ -145,16 +171,19 @@ check_db_ready() {
     if [[ -z "${db_user}" ]]; then
         suite_fail_fast "E_DB_CONFIG_INVALID" "db.user missing in ${ENV_FILE}"
     fi
+    if [[ -z "${db_sslmode}" ]]; then
+        db_sslmode="disable"
+    fi
     if [[ -z "${db_password}" ]]; then
         suite_fail_fast "E_DB_CONFIG_INVALID" "db.password missing in ${ENV_FILE}"
     fi
 
+    db_conninfo="$(build_conninfo "${db_host}" "${db_port}" "${db_user}" "${db_name}" "${db_password}" "${db_sslmode}" "3")"
+
     set +e
     db_result="$(
-        PGCONNECT_TIMEOUT=3 \
-        PGPASSWORD="${db_password}" \
-        psql -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" \
-            --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "SELECT 1" 2>&1
+        psql "${db_conninfo}" \
+            --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "SELECT 1"
     )"
     db_rc=$?
     set -e
@@ -264,44 +293,44 @@ run_test() {
     return 0
 }
 
-[[ -x "${ROOT_DIR}/scripts/test_tls_normal_connection.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_normal_connection.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_normal_connection.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_normal_connection.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_forced_termination.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_forced_termination.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_forced_termination.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_forced_termination.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_cert_mismatch.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_cert_mismatch.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_cert_mismatch.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_cert_mismatch.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_expired_cert.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_expired_cert.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_expired_cert.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_expired_cert.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_plaintext_reject.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_plaintext_reject.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_plaintext_reject.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_plaintext_reject.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_reconnect_stress.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_reconnect_stress.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_reconnect_stress.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_reconnect_stress.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_tls_concurrent_longrun.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_tls_concurrent_longrun.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_tls_concurrent_longrun.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_tls_concurrent_longrun.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_server_graceful_shutdown.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_server_graceful_shutdown.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_server_graceful_shutdown.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_server_graceful_shutdown.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_db_connection.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_db_connection.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_db_connection.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_db_connection.sh"
     exit 1
 }
-[[ -x "${ROOT_DIR}/scripts/test_db_friend_features.sh" ]] || {
-    echo "[FAIL] missing executable: scripts/test_db_friend_features.sh"
+[[ -x "${ROOT_DIR}/scripts/test/test_db_friend_features.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test/test_db_friend_features.sh"
     exit 1
 }
 
@@ -318,7 +347,7 @@ load_env_file "${ENV_FILE}"
 check_suite_prerequisites
 
 if is_enabled "${RUN_NORMAL_RAW}"; then
-    run_test "tls-normal" "${ROOT_DIR}/scripts/test_tls_normal_connection.sh" "${TLS_CONFIG}" || true
+    run_test "tls-normal" "${ROOT_DIR}/scripts/test/test_tls_normal_connection.sh" "${TLS_CONFIG}" || true
 else
     skip_test "tls-normal"
 fi
@@ -326,7 +355,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; else g
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_FORCED_RAW}"; then
-        run_test "tls-forced" "${ROOT_DIR}/scripts/test_tls_forced_termination.sh" "${TLS_CONFIG}" || true
+        run_test "tls-forced" "${ROOT_DIR}/scripts/test/test_tls_forced_termination.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-forced"
     fi
@@ -335,7 +364,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_MISMATCH_RAW}"; then
-        run_test "tls-mismatch" "${ROOT_DIR}/scripts/test_tls_cert_mismatch.sh" "${TLS_CONFIG}" || true
+        run_test "tls-mismatch" "${ROOT_DIR}/scripts/test/test_tls_cert_mismatch.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-mismatch"
     fi
@@ -344,7 +373,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_EXPIRED_RAW}"; then
-        run_test "tls-expired" "${ROOT_DIR}/scripts/test_tls_expired_cert.sh" "${TLS_CONFIG}" || true
+        run_test "tls-expired" "${ROOT_DIR}/scripts/test/test_tls_expired_cert.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-expired"
     fi
@@ -353,7 +382,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_PLAINTEXT_RAW}"; then
-        run_test "tls-plaintext" "${ROOT_DIR}/scripts/test_tls_plaintext_reject.sh" "${TLS_CONFIG}" || true
+        run_test "tls-plaintext" "${ROOT_DIR}/scripts/test/test_tls_plaintext_reject.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-plaintext"
     fi
@@ -362,7 +391,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_STRESS_RAW}"; then
-        run_test "tls-stress" "${ROOT_DIR}/scripts/test_tls_reconnect_stress.sh" "${TLS_CONFIG}" || true
+        run_test "tls-stress" "${ROOT_DIR}/scripts/test/test_tls_reconnect_stress.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-stress"
     fi
@@ -371,7 +400,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_GRACEFUL_RAW}"; then
-        run_test "server-graceful" "${ROOT_DIR}/scripts/test_server_graceful_shutdown.sh" "${TLS_CONFIG}" || true
+        run_test "server-graceful" "${ROOT_DIR}/scripts/test/test_server_graceful_shutdown.sh" "${TLS_CONFIG}" || true
     else
         skip_test "server-graceful"
     fi
@@ -380,7 +409,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_LONGRUN_RAW}"; then
-        run_test "tls-longrun" "${ROOT_DIR}/scripts/test_tls_concurrent_longrun.sh" "${TLS_CONFIG}" || true
+        run_test "tls-longrun" "${ROOT_DIR}/scripts/test/test_tls_concurrent_longrun.sh" "${TLS_CONFIG}" || true
     else
         skip_test "tls-longrun"
     fi
@@ -389,7 +418,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_DB_RAW}"; then
-        run_test "db-connection" "${ROOT_DIR}/scripts/test_db_connection.sh" "${DB_CONFIG}" || true
+        run_test "db-connection" "${ROOT_DIR}/scripts/test/test_db_connection.sh" "${DB_CONFIG}" || true
     else
         skip_test "db-connection"
     fi
@@ -398,7 +427,7 @@ if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
 
 if [[ "${goto_end}" -eq 0 ]]; then
     if is_enabled "${RUN_DB_FRIEND_RAW}"; then
-        run_test "db-friend" "${ROOT_DIR}/scripts/test_db_friend_features.sh" "${DB_CONFIG}" || true
+        run_test "db-friend" "${ROOT_DIR}/scripts/test/test_db_friend_features.sh" "${DB_CONFIG}" || true
     else
         skip_test "db-friend"
     fi
