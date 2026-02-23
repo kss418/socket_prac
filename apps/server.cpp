@@ -1,6 +1,7 @@
 #include "server/epoll_server.hpp"
 #include "core/config_loader.hpp"
 #include "core/logger.hpp"
+#include "core/path_util.hpp"
 #include "database/db_connector.hpp"
 #include "database/db_service.hpp"
 #include "net/tls_context.hpp"
@@ -18,7 +19,8 @@ const char* signal_to_string(int sig){
     return "UNKNOWN";
 }
 
-int main(){
+int main(int argc, char** argv){
+    (void)argc;
 #if defined(SIGPIPE)
     std::signal(SIGPIPE, SIG_IGN);
 #endif
@@ -33,9 +35,11 @@ int main(){
         return 1;
     }
 
-    std::filesystem::path root_path = std::filesystem::path(PROJECT_ROOT_DIR);
+    std::filesystem::path root_path =
+        path_util::resolve_root_with_required_files(argv, {"config/server.conf", ".env"});
     std::filesystem::path config_path = root_path / "config/server.conf";
     std::filesystem::path env_path = root_path / ".env";
+    logger::log_info("runtime root path: " + root_path.string());
 
     auto cfg_exp = config_loader::load_key_value_file(config_path.string());
     if(!cfg_exp){
@@ -72,8 +76,8 @@ int main(){
     std::string tls_cert_raw = config_loader::get_or(cfg, "tls.cert", "");
     std::string tls_key_raw = config_loader::get_or(cfg, "tls.key", "");
 
-    std::string tls_cert_path = root_path / tls_cert_raw;
-    std::string tls_key_path = root_path / tls_key_raw;
+    std::string tls_cert_path = path_util::resolve_from_root(root_path, tls_cert_raw).string();
+    std::string tls_key_path = path_util::resolve_from_root(root_path, tls_key_raw).string();
 
     auto db_exp = db_connector::create(
         db_host, db_port, db_name, db_user, db_password

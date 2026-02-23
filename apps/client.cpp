@@ -1,5 +1,6 @@
 #include "client/chat_client.hpp"
 #include "core/logger.hpp"
+#include "core/path_util.hpp"
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -11,7 +12,9 @@ int main(int argc, char** argv){
 
     std::string ip = "127.0.0.1";
     std::string port = "8080";
-    std::filesystem::path ca_path = std::filesystem::path(PROJECT_ROOT_DIR) / "certs/ca.crt.pem";
+    std::filesystem::path ca_path = path_util::resolve_file_in_default_roots(
+        argv, "certs/ca.crt.pem", "certs/ca.crt.pem"
+    );
 
     if(argc > 4){
         std::cerr << "usage: " << argv[0] << " [ip] [port] [ca_path]" << "\n";
