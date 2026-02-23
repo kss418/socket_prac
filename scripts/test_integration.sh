@@ -22,6 +22,7 @@ RUN_STRESS_RAW="$(cfg_get "suite.run.stress" "1")"
 RUN_GRACEFUL_RAW="$(cfg_get "suite.run.graceful" "1")"
 RUN_LONGRUN_RAW="$(cfg_get "suite.run.longrun" "0")"
 RUN_DB_RAW="$(cfg_get "suite.run.db" "1")"
+RUN_DB_FRIEND_RAW="$(cfg_get "suite.run.db_friend" "1")"
 
 mkdir -p "${LOG_DIR}"
 SUITE_TS="$(timestamp_now)"
@@ -164,7 +165,7 @@ check_db_ready() {
 }
 
 check_suite_prerequisites() {
-    if ! need_tls_tests && ! is_enabled "${RUN_DB_RAW}"; then
+    if ! need_tls_tests && ! is_enabled "${RUN_DB_RAW}" && ! is_enabled "${RUN_DB_FRIEND_RAW}"; then
         return 0
     fi
 
@@ -299,6 +300,10 @@ run_test() {
     echo "[FAIL] missing executable: scripts/test_db_connection.sh"
     exit 1
 }
+[[ -x "${ROOT_DIR}/scripts/test_db_friend_features.sh" ]] || {
+    echo "[FAIL] missing executable: scripts/test_db_friend_features.sh"
+    exit 1
+}
 
 echo "[INFO] integration suite start ${SUITE_TS}" | tee -a "${SUITE_LOG}"
 echo "[INFO] suite config: ${CONFIG_FILE}" | tee -a "${SUITE_LOG}"
@@ -387,6 +392,15 @@ if [[ "${goto_end}" -eq 0 ]]; then
         run_test "db-connection" "${ROOT_DIR}/scripts/test_db_connection.sh" "${DB_CONFIG}" || true
     else
         skip_test "db-connection"
+    fi
+fi
+if [[ "${FAIL_FAST}" == "1" && "${FAIL_COUNT}" -gt 0 ]]; then goto_end=1; fi
+
+if [[ "${goto_end}" -eq 0 ]]; then
+    if is_enabled "${RUN_DB_FRIEND_RAW}"; then
+        run_test "db-friend" "${ROOT_DIR}/scripts/test_db_friend_features.sh" "${DB_CONFIG}" || true
+    else
+        skip_test "db-friend"
     fi
 fi
 
