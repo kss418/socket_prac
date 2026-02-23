@@ -211,25 +211,31 @@ psql_admin -c "GRANT CONNECT, TEMP ON DATABASE ${DB_NAME_IDENT} TO ${APP_DB_USER
 info "ensuring app schemas exist"
 psql_target -c "CREATE SCHEMA IF NOT EXISTS auth;" >/dev/null
 psql_target -c "CREATE SCHEMA IF NOT EXISTS social;" >/dev/null
+psql_target -c "CREATE SCHEMA IF NOT EXISTS chat;" >/dev/null
 
-info "granting schema/default privileges (public, auth, social)"
+info "granting schema/default privileges (public, auth, social, chat)"
 psql_target -c "GRANT USAGE, CREATE ON SCHEMA public TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT USAGE, CREATE ON SCHEMA auth TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT USAGE, CREATE ON SCHEMA social TO ${APP_DB_USER_IDENT};" >/dev/null
+psql_target -c "GRANT USAGE, CREATE ON SCHEMA chat TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA social GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APP_DB_USER_IDENT};" >/dev/null
+psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA chat GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA social GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${APP_DB_USER_IDENT};" >/dev/null
+psql_target -c "ALTER DEFAULT PRIVILEGES IN SCHEMA chat GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${APP_DB_USER_IDENT};" >/dev/null
 
 info "granting privileges on existing objects"
 psql_target -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA auth TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA social TO ${APP_DB_USER_IDENT};" >/dev/null
+psql_target -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA chat TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA auth TO ${APP_DB_USER_IDENT};" >/dev/null
 psql_target -c "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA social TO ${APP_DB_USER_IDENT};" >/dev/null
+psql_target -c "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA chat TO ${APP_DB_USER_IDENT};" >/dev/null
 
 echo "[PASS] db role/database provisioning complete"
 echo "[INFO] server config: ${SERVER_CONFIG}"

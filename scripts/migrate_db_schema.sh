@@ -191,6 +191,7 @@ info "applying schema migrations to ${MIGRATE_DB_USER}@${DB_HOST}:${DB_PORT}/${D
 psql_exec "${DB_NAME}" <<'SQL'
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS social;
+CREATE SCHEMA IF NOT EXISTS chat;
 
 CREATE TABLE IF NOT EXISTS auth.users (
     id TEXT PRIMARY KEY,
@@ -299,6 +300,34 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_friendships_user_a ON social.friendships (user_a_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_user_b ON social.friendships (user_b_id);
 CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status ON social.friend_requests (to_user_id, status);
+
+CREATE TABLE IF NOT EXISTS chat.rooms (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name          TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS chat.room_members (
+    room_id   BIGINT NOT NULL REFERENCES chat.rooms(id) ON DELETE CASCADE,
+    user_id   TEXT NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    role      TEXT NOT NULL DEFAULT 'member',
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT room_members_pk PRIMARY KEY (room_id, user_id),
+    CONSTRAINT room_members_role_check CHECK (role IN ('owner', 'admin', 'member'))
+);
+
+CREATE TABLE IF NOT EXISTS chat.messages (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    room_id        BIGINT NOT NULL REFERENCES chat.rooms(id) ON DELETE CASCADE,
+    sender_user_id TEXT NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    body           TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_members_user_id ON chat.room_members (user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_room_created_at ON chat.messages (room_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_sender_created_at ON chat.messages (sender_user_id, created_at);
 SQL
 
 info "schema migration finished"
@@ -307,10 +336,16 @@ info "verifying required tables"
 users_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('auth.users') IS NOT NULL;")"
 friendships_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('social.friendships') IS NOT NULL;")"
 friend_requests_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('social.friend_requests') IS NOT NULL;")"
+chat_rooms_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('chat.rooms') IS NOT NULL;")"
+chat_room_members_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('chat.room_members') IS NOT NULL;")"
+chat_messages_exists="$(psql_exec "${DB_NAME}" -tA -c "SELECT to_regclass('chat.messages') IS NOT NULL;")"
 
 [[ "${users_exists}" == "t" ]] || fail "auth.users missing after migration"
 [[ "${friendships_exists}" == "t" ]] || fail "social.friendships missing after migration"
 [[ "${friend_requests_exists}" == "t" ]] || fail "social.friend_requests missing after migration"
+[[ "${chat_rooms_exists}" == "t" ]] || fail "chat.rooms missing after migration"
+[[ "${chat_room_members_exists}" == "t" ]] || fail "chat.room_members missing after migration"
+[[ "${chat_messages_exists}" == "t" ]] || fail "chat.messages missing after migration"
 
 echo "[PASS] db schema migration applied successfully"
 echo "[INFO] config: ${SERVER_CONFIG}"

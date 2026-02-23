@@ -18,6 +18,13 @@ namespace command_codec{
     struct cmd_friend_remove{ std::string friend_user_id; };
     struct cmd_list_friend{};
     struct cmd_list_friend_request{};
+    struct cmd_create_room{ std::string room_name; };
+    struct cmd_delete_room{ std::string room_id; };
+    struct cmd_invite_room{
+        std::string room_id;
+        std::string friend_user_id;
+    };
+    struct cmd_list_room{};
 
     enum class decode_error : int{
         empty_line = 1,
@@ -40,7 +47,11 @@ namespace command_codec{
         cmd_friend_reject,
         cmd_friend_remove,
         cmd_list_friend,
-        cmd_list_friend_request
+        cmd_list_friend_request,
+        cmd_create_room,
+        cmd_delete_room,
+        cmd_invite_room,
+        cmd_list_room
     >;
 
     decode_info decode_line(std::string_view line);

@@ -1,6 +1,7 @@
 #include "database/db_service.hpp"
 #include "database/db_connector.hpp"
 #include <pqxx/pqxx>
+#include <cerrno>
 #include <string>
 #include <vector>
 
@@ -247,6 +248,145 @@ std::expected<std::vector<std::string>, error_code> db_service::list_friend_requ
         out.reserve(rows.size());
         for(const auto& row : rows){
             out.emplace_back(row[0].c_str());
+        }
+        return out;
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
+std::expected<std::int64_t, error_code> db_service::create_room(
+    std::string_view owner_user_id, std::string_view room_name
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::work tx(connector.connection());
+        auto room_rows = tx.exec(
+            "INSERT INTO chat.rooms (name, owner_user_id) "
+            "VALUES ($1, $2) "
+            "RETURNING id",
+            pqxx::params{room_name, owner_user_id}
+        );
+        if(room_rows.empty()){
+            tx.commit();
+            return std::unexpected(error_code::from_errno(EIO));
+        }
+
+        std::int64_t room_id = room_rows[0][0].as<std::int64_t>();
+
+        tx.exec(
+            "INSERT INTO chat.room_members (room_id, user_id, role) "
+            "VALUES ($1, $2, 'owner') "
+            "ON CONFLICT (room_id, user_id) DO NOTHING",
+            pqxx::params{room_id, owner_user_id}
+        );
+
+        tx.commit();
+        return room_id;
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
+std::expected<bool, error_code> db_service::delete_room(
+    std::string_view owner_user_id, std::int64_t room_id
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::work tx(connector.connection());
+        auto rows = tx.exec(
+            "DELETE FROM chat.rooms "
+            "WHERE id = $1 AND owner_user_id = $2 "
+            "RETURNING id",
+            pqxx::params{room_id, owner_user_id}
+        );
+        tx.commit();
+        return !rows.empty();
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
+std::expected<db_service::invite_room_result, error_code> db_service::invite_room(
+    std::string_view inviter_user_id,
+    std::int64_t room_id,
+    std::string_view friend_user_id
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::work tx(connector.connection());
+
+        auto inviter_member_rows = tx.exec(
+            "SELECT 1 "
+            "FROM chat.room_members "
+            "WHERE room_id = $1 AND user_id = $2 "
+            "LIMIT 1",
+            pqxx::params{room_id, inviter_user_id}
+        );
+        if(inviter_member_rows.empty()){
+            tx.commit();
+            return invite_room_result::room_not_found_or_no_permission;
+        }
+
+        auto friendship_rows = tx.exec(
+            "SELECT 1 "
+            "FROM social.friendships "
+            "WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2) "
+            "LIMIT 1",
+            pqxx::params{inviter_user_id, friend_user_id}
+        );
+        if(friendship_rows.empty()){
+            tx.commit();
+            return invite_room_result::not_friend;
+        }
+
+        auto insert_rows = tx.exec(
+            "INSERT INTO chat.room_members (room_id, user_id, role) "
+            "VALUES ($1, $2, 'member') "
+            "ON CONFLICT (room_id, user_id) DO NOTHING "
+            "RETURNING user_id",
+            pqxx::params{room_id, friend_user_id}
+        );
+
+        tx.commit();
+        if(insert_rows.empty()) return invite_room_result::already_member;
+        return invite_room_result::invited;
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
+std::expected<std::vector<db_service::room_info>, error_code> db_service::list_rooms(
+    std::string_view user_id
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::read_transaction tx(connector.connection());
+        auto rows = tx.exec(
+            "SELECT r.id, r.name, r.owner_user_id, COUNT(all_m.user_id)::BIGINT AS member_count "
+            "FROM chat.rooms r "
+            "JOIN chat.room_members scope_m "
+            "  ON scope_m.room_id = r.id AND scope_m.user_id = $1 "
+            "LEFT JOIN chat.room_members all_m ON all_m.room_id = r.id "
+            "GROUP BY r.id, r.name, r.owner_user_id "
+            "ORDER BY r.id ASC",
+            pqxx::params{user_id}
+        );
+        tx.commit();
+
+        std::vector<room_info> out;
+        out.reserve(rows.size());
+        for(const auto& row : rows){
+            room_info info{};
+            info.id = row[0].as<std::int64_t>();
+            info.name = row[1].c_str();
+            info.owner_user_id = row[2].c_str();
+            info.member_count = row[3].as<std::int64_t>();
+            out.push_back(std::move(info));
         }
         return out;
     } catch(const std::exception& ex){

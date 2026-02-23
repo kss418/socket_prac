@@ -295,6 +295,42 @@ void chat_io_worker::execute(const std::string& line){
         return;
     }
 
+    if(parsed.cmd == "/create_room"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/create_room <room_name>");
+            return;
+        }
+        create_room(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/delete_room"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/delete_room <room_id>");
+            return;
+        }
+        delete_room(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/invite_room"){
+        if(parsed.args.size() != 2){
+            client_console::print_line("/invite_room <room_id> <friend_user_id>");
+            return;
+        }
+        invite_room(parsed.args[0], parsed.args[1]);
+        return;
+    }
+
+    if(parsed.cmd == "/list_room"){
+        if(!parsed.args.empty()){
+            client_console::print_line("/list_room");
+            return;
+        }
+        list_room();
+        return;
+    }
+
     if(parsed.cmd == "/help"){
         if(parsed.args.size() != 0){
             client_console::print_line("/help");
@@ -349,6 +385,22 @@ void chat_io_worker::list_friend_request(){
     si.send.append(command_codec::cmd_list_friend_request{});
 }
 
+void chat_io_worker::create_room(const std::string& room_name){
+    si.send.append(command_codec::cmd_create_room{room_name});
+}
+
+void chat_io_worker::delete_room(const std::string& room_id){
+    si.send.append(command_codec::cmd_delete_room{room_id});
+}
+
+void chat_io_worker::invite_room(const std::string& room_id, const std::string& friend_user_id){
+    si.send.append(command_codec::cmd_invite_room{room_id, friend_user_id});
+}
+
+void chat_io_worker::list_room(){
+    si.send.append(command_codec::cmd_list_room{});
+}
+
 void chat_io_worker::help(){
     std::lock_guard<std::mutex> lock(client_console::output_mutex());
     std::cout << "commands:\n"
@@ -360,6 +412,10 @@ void chat_io_worker::help(){
               << "  /friend_remove <user_id>\n"
               << "  /list_friend\n"
               << "  /list_friend_request\n"
+              << "  /create_room <room_name>\n"
+              << "  /delete_room <room_id>\n"
+              << "  /invite_room <room_id> <friend_user_id>\n"
+              << "  /list_room\n"
               << "  /nick <nickname>\n"
               << "  /help\n"
               << "  <text> (send chat message)\n";

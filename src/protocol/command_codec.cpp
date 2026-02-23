@@ -55,6 +55,10 @@ std::string command_codec::encode(const command& cmd){
         if constexpr (std::is_same_v<T, cmd_friend_remove>) return "friend_remove\r" + c.friend_user_id + "\n";
         if constexpr (std::is_same_v<T, cmd_list_friend>) return "list_friend\n";
         if constexpr (std::is_same_v<T, cmd_list_friend_request>) return "list_friend_request\n";
+        if constexpr (std::is_same_v<T, cmd_create_room>) return "create_room\r" + c.room_name + "\n";
+        if constexpr (std::is_same_v<T, cmd_delete_room>) return "delete_room\r" + c.room_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_invite_room>) return "invite_room\r" + c.room_id + "\r" + c.friend_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_list_room>) return "list_room\n";
     }, cmd);    
 }
 
@@ -142,6 +146,34 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_list_friend_request{};
+    }
+
+    if(info.cmd == "create_room"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_create_room{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "delete_room"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_delete_room{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "invite_room"){
+        if(info.args.size() != 2){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_invite_room{std::string(info.args[0]), std::string(info.args[1])};
+    }
+
+    if(info.cmd == "list_room"){
+        if(!info.args.empty()){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_list_room{};
     }
 
     return std::unexpected(error_code::from_decode(decode_error::invalid_command));

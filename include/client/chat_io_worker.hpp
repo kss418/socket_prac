@@ -41,6 +41,10 @@ class chat_io_worker{
     void remove_friend(const std::string& friend_user_id);
     void list_friend();
     void list_friend_request();
+    void create_room(const std::string& room_name);
+    void delete_room(const std::string& room_id);
+    void invite_room(const std::string& room_id, const std::string& friend_user_id);
+    void list_room();
     void help();
 public:
     chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in);

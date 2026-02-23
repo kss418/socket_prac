@@ -23,7 +23,11 @@ bool db_executor::is_db_command(const command_codec::command& cmd) noexcept{
         || std::holds_alternative<command_codec::cmd_friend_reject>(cmd)
         || std::holds_alternative<command_codec::cmd_friend_remove>(cmd)
         || std::holds_alternative<command_codec::cmd_list_friend>(cmd)
-        || std::holds_alternative<command_codec::cmd_list_friend_request>(cmd);
+        || std::holds_alternative<command_codec::cmd_list_friend_request>(cmd)
+        || std::holds_alternative<command_codec::cmd_create_room>(cmd)
+        || std::holds_alternative<command_codec::cmd_delete_room>(cmd)
+        || std::holds_alternative<command_codec::cmd_invite_room>(cmd)
+        || std::holds_alternative<command_codec::cmd_list_room>(cmd);
 }
 
 void db_executor::stop(){
@@ -94,6 +98,10 @@ void db_executor::execute(const task& t){
             || std::is_same_v<T, command_codec::cmd_friend_remove>
             || std::is_same_v<T, command_codec::cmd_list_friend>
             || std::is_same_v<T, command_codec::cmd_list_friend_request>
+            || std::is_same_v<T, command_codec::cmd_create_room>
+            || std::is_same_v<T, command_codec::cmd_delete_room>
+            || std::is_same_v<T, command_codec::cmd_invite_room>
+            || std::is_same_v<T, command_codec::cmd_list_room>
         ){
             execute_command(c, reg, fd, user_id);
         }
@@ -358,4 +366,176 @@ void db_executor::execute_command(
     }
 
     logger::log_info(std::string(user_id) + " request list_friend_request");
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_create_room& cmd,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    if(cmd.room_name.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"room name is empty"});
+        return;
+    }
+
+    auto create_exp = db.create_room(user_id, cmd.room_name);
+    if(!create_exp){
+        logger::log_error("create room failed", "db_executor::execute_command()", create_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"create room failed"});
+        return;
+    }
+
+    reg.request_send(
+        fd,
+        command_codec::cmd_response{
+            "room created: " + std::to_string(*create_exp) + " (" + cmd.room_name + ")"
+        }
+    );
+    logger::log_info(std::string(user_id) + " created room " + std::to_string(*create_exp));
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_delete_room& cmd,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    std::int64_t room_id = 0;
+    try{
+        std::size_t pos = 0;
+        room_id = std::stoll(cmd.room_id, &pos);
+        if(pos != cmd.room_id.size() || room_id <= 0){
+            reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+            return;
+        }
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+        return;
+    }
+
+    auto delete_exp = db.delete_room(user_id, room_id);
+    if(!delete_exp){
+        logger::log_error("delete room failed", "db_executor::execute_command()", delete_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"delete room failed"});
+        return;
+    }
+
+    if(!*delete_exp){
+        reg.request_send(fd, command_codec::cmd_response{"room not found or no permission"});
+        return;
+    }
+
+    reg.request_send(fd, command_codec::cmd_response{"room deleted: " + std::to_string(room_id)});
+    logger::log_info(std::string(user_id) + " deleted room " + std::to_string(room_id));
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_invite_room& cmd,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    if(user_id == cmd.friend_user_id){
+        reg.request_send(fd, command_codec::cmd_response{"cannot invite yourself"});
+        return;
+    }
+
+    std::int64_t room_id = 0;
+    try{
+        std::size_t pos = 0;
+        room_id = std::stoll(cmd.room_id, &pos);
+        if(pos != cmd.room_id.size() || room_id <= 0){
+            reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+            return;
+        }
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+        return;
+    }
+
+    auto invite_exp = db.invite_room(user_id, room_id, cmd.friend_user_id);
+    if(!invite_exp){
+        logger::log_error("invite room failed", "db_executor::execute_command()", invite_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"invite room failed"});
+        return;
+    }
+
+    switch(*invite_exp){
+        case db_service::invite_room_result::invited:
+            reg.request_send(
+                fd,
+                command_codec::cmd_response{
+                    "room invite sent: room=" + std::to_string(room_id) + " user=" + cmd.friend_user_id
+                }
+            );
+            logger::log_info(
+                std::string(user_id)
+                + " invited " + cmd.friend_user_id
+                + " to room " + std::to_string(room_id)
+            );
+            return;
+        case db_service::invite_room_result::already_member:
+            reg.request_send(fd, command_codec::cmd_response{"user already in room"});
+            return;
+        case db_service::invite_room_result::not_friend:
+            reg.request_send(fd, command_codec::cmd_response{"can invite friends only"});
+            return;
+        case db_service::invite_room_result::room_not_found_or_no_permission:
+            reg.request_send(fd, command_codec::cmd_response{"room not found or no permission"});
+            return;
+    }
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_list_room&,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    auto list_exp = db.list_rooms(user_id);
+    if(!list_exp){
+        logger::log_error("list room failed", "db_executor::execute_command()", list_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"list room failed"});
+        return;
+    }
+
+    if(list_exp->empty()){
+        reg.request_send(fd, command_codec::cmd_response{"no rooms"});
+        return;
+    }
+
+    reg.request_send(fd, command_codec::cmd_response{"rooms: " + std::to_string(list_exp->size())});
+    for(const auto& room : *list_exp){
+        reg.request_send(
+            fd,
+            command_codec::cmd_response{
+                "room: id=" + std::to_string(room.id)
+                + " name=" + room.name
+                + " owner=" + room.owner_user_id
+                + " members=" + std::to_string(room.member_count)
+            }
+        );
+    }
+    logger::log_info(std::string(user_id) + " request list_room");
 }
