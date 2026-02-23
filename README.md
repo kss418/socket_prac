@@ -21,13 +21,12 @@ This repository contains a TLS chat server/client with PostgreSQL support.
 ```bash
 cd /path/to/socket_prac
 ./scripts/build_server.sh
-cmake --build build --target client -j"$(nproc)"
 ```
 
 Expected output binaries:
 
-- `build/server`
-- `build/client`
+- `./server`
+- `./client`
 
 ### 2) Deploy to EC2 with the deploy script
 
@@ -38,7 +37,8 @@ cd /path/to/socket_prac
 
 What this uploads:
 
-- `/home/ubuntu/socket_prac/build/server`
+- `/home/ubuntu/socket_prac/server`
+- `/home/ubuntu/socket_prac/client`
 - `/home/ubuntu/socket_prac/.env`
 - `/home/ubuntu/socket_prac/config/`
 - `/home/ubuntu/socket_prac/bootstrap_ubuntu.sh`
@@ -88,7 +88,7 @@ Use the CA file downloaded by deploy script:
 
 ```bash
 cd /path/to/socket_prac
-./build/client <EC2_PUBLIC_IP> 8080 ./ca.crt.pem
+./client <EC2_PUBLIC_IP> 8080 ./ca.crt.pem
 ```
 
 If you changed server port in `config/server.conf`, use that port in the client command.
@@ -107,4 +107,3 @@ Common options:
 - `--tls-san-ip <value>`
 - `--pull-ca 0|1`
 - `--local-ca-out <path>`
-

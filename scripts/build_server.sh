@@ -6,6 +6,18 @@ BUILD_DIR_RAW="${BUILD_DIR:-build}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 BUILD_JOBS="${BUILD_JOBS:-}"
 BUILD_DIR="${ROOT_DIR}/${BUILD_DIR_RAW}"
+OUTPUT_DIR_RAW="${OUTPUT_DIR:-.}"
+
+resolve_path_from_root() {
+    local p="$1"
+    if [[ "${p}" = /* ]]; then
+        echo "${p}"
+    else
+        echo "${ROOT_DIR}/${p}"
+    fi
+}
+
+OUTPUT_DIR="$(resolve_path_from_root "${OUTPUT_DIR_RAW}")"
 
 fail() {
     echo "[FAIL] $1"
@@ -32,7 +44,7 @@ if [[ -z "${BUILD_JOBS}" ]]; then
     fi
 fi
 
-mkdir -p "${BUILD_DIR}"
+mkdir -p "${BUILD_DIR}" "${OUTPUT_DIR}"
 
 configure_cmd=(cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
 
@@ -48,8 +60,19 @@ fi
 info "configuring project (build_dir=${BUILD_DIR_RAW}, build_type=${BUILD_TYPE})"
 "${configure_cmd[@]}"
 
-info "building server target (jobs=${BUILD_JOBS})"
-cmake --build "${BUILD_DIR}" --target server -j "${BUILD_JOBS}"
+info "building server/client targets (jobs=${BUILD_JOBS})"
+cmake --build "${BUILD_DIR}" --target server client -j "${BUILD_JOBS}"
 
-echo "[PASS] server build success"
-echo "[INFO] binary: ${BUILD_DIR}/server"
+if [[ ! -f "${BUILD_DIR}/server" ]]; then
+    fail "build output not found: ${BUILD_DIR}/server"
+fi
+if [[ ! -f "${BUILD_DIR}/client" ]]; then
+    fail "build output not found: ${BUILD_DIR}/client"
+fi
+
+install -m 755 "${BUILD_DIR}/server" "${OUTPUT_DIR}/server"
+install -m 755 "${BUILD_DIR}/client" "${OUTPUT_DIR}/client"
+
+echo "[PASS] server/client build success"
+echo "[INFO] server binary: ${OUTPUT_DIR}/server"
+echo "[INFO] client binary: ${OUTPUT_DIR}/client"

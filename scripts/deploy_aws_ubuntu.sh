@@ -9,7 +9,8 @@ SSH_PORT="${SSH_PORT:-22}"
 KEY_PATH="${KEY_PATH:-}"
 REMOTE_DIR="${REMOTE_DIR:-/home/ubuntu/socket_prac}"
 
-SERVER_BIN_RAW="${SERVER_BIN:-build/server}"
+SERVER_BIN_RAW="${SERVER_BIN:-server}"
+CLIENT_BIN_RAW="${CLIENT_BIN:-client}"
 ENV_FILE_RAW="${ENV_FILE:-.env}"
 CONFIG_FILE_RAW="${CONFIG_FILE:-config/server.conf}"
 CONFIG_DIR_RAW="${CONFIG_DIR:-config}"
@@ -43,7 +44,8 @@ Options:
   --user              SSH user (default: ubuntu)
   --port              SSH port (default: 22)
   --remote-dir        Remote deploy directory (default: /home/ubuntu/socket_prac)
-  --server-bin        Local server binary path, relative to project root allowed (default: build/server)
+  --server-bin        Local server binary path, relative to project root allowed (default: server)
+  --client-bin        Local client binary path, relative to project root allowed (default: client)
   --env-file          Local env file path, relative to project root allowed (default: .env)
   --config-file       Local server config file path for validation (default: config/server.conf)
   --config-dir        Local config directory to upload (default: config)
@@ -132,6 +134,11 @@ while [[ $# -gt 0 ]]; do
             SERVER_BIN_RAW="$2"
             shift 2
             ;;
+        --client-bin)
+            [[ $# -ge 2 ]] || fail "--client-bin requires a value"
+            CLIENT_BIN_RAW="$2"
+            shift 2
+            ;;
         --env-file)
             [[ $# -ge 2 ]] || fail "--env-file requires a value"
             ENV_FILE_RAW="$2"
@@ -209,6 +216,7 @@ if [[ "${KEY_PATH}" != /* ]]; then
 fi
 
 SERVER_BIN="$(resolve_from_root "${SERVER_BIN_RAW}")"
+CLIENT_BIN="$(resolve_from_root "${CLIENT_BIN_RAW}")"
 ENV_FILE="$(resolve_from_root "${ENV_FILE_RAW}")"
 CONFIG_FILE="$(resolve_from_root "${CONFIG_FILE_RAW}")"
 CONFIG_DIR="$(resolve_from_root "${CONFIG_DIR_RAW}")"
@@ -222,6 +230,7 @@ fi
 
 [[ -f "${KEY_PATH}" ]] || fail "key file not found: ${KEY_PATH}"
 [[ -f "${SERVER_BIN}" ]] || fail "server binary not found: ${SERVER_BIN}"
+[[ -f "${CLIENT_BIN}" ]] || fail "client binary not found: ${CLIENT_BIN}"
 [[ -f "${ENV_FILE}" ]] || fail "env file not found: ${ENV_FILE}"
 [[ -f "${CONFIG_FILE}" ]] || fail "config file not found: ${CONFIG_FILE}"
 [[ -d "${CONFIG_DIR}" ]] || fail "config directory not found: ${CONFIG_DIR}"
@@ -255,6 +264,9 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "mkdir -p '${REMOTE_DIR}' '${REMOTE_DIR}/config
 info "uploading server binary"
 scp "${SCP_OPTS[@]}" "${SERVER_BIN}" "${REMOTE}:${REMOTE_DIR}/server"
 
+info "uploading client binary"
+scp "${SCP_OPTS[@]}" "${CLIENT_BIN}" "${REMOTE}:${REMOTE_DIR}/client"
+
 info "uploading .env"
 scp "${SCP_OPTS[@]}" "${ENV_FILE}" "${REMOTE}:${REMOTE_DIR}/.env"
 
@@ -268,7 +280,7 @@ info "uploading scripts directory"
 scp "${SCP_OPTS[@]}" -r "${SCRIPTS_DIR}" "${REMOTE}:${REMOTE_DIR}/"
 
 info "setting executable permissions"
-ssh "${SSH_OPTS[@]}" "${REMOTE}" "chmod +x '${REMOTE_DIR}/server' '${REMOTE_DIR}/bootstrap_ubuntu.sh'"
+ssh "${SSH_OPTS[@]}" "${REMOTE}" "chmod +x '${REMOTE_DIR}/server' '${REMOTE_DIR}/client' '${REMOTE_DIR}/bootstrap_ubuntu.sh'"
 
 if [[ "${AUTO_TLS}" == "1" ]]; then
     if [[ -z "${TLS_SAN_DNS}" || -z "${TLS_SAN_IP}" ]]; then
@@ -300,6 +312,7 @@ fi
 echo "[PASS] deploy files uploaded"
 echo "[INFO] uploaded files:"
 echo "  - ${REMOTE_DIR}/server"
+echo "  - ${REMOTE_DIR}/client"
 echo "  - ${REMOTE_DIR}/.env"
 echo "  - ${REMOTE_DIR}/config/"
 echo "  - ${REMOTE_DIR}/bootstrap_ubuntu.sh"
@@ -309,6 +322,6 @@ if [[ "${AUTO_TLS}" == "1" ]]; then
 fi
 if [[ "${PULL_CA}" == "1" ]]; then
     echo "  - local CA: ${LOCAL_CA_OUT}"
-    echo "[INFO] client example: ./build/client ${REMOTE_HOST} 8080 ${LOCAL_CA_OUT}"
+    echo "[INFO] client example: ./client ${REMOTE_HOST} 8080 ${LOCAL_CA_OUT}"
 fi
 echo "[INFO] next: ssh -i ${KEY_PATH} ${REMOTE} 'cd ${REMOTE_DIR} && ./server'"
