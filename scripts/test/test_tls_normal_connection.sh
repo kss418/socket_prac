@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_tls.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
 
 SERVER_BIN="$(resolve_path_from_root "$(cfg_get "test.server_bin" "build/server")")"
 CLIENT_BIN="$(resolve_path_from_root "$(cfg_get "test.client_bin" "build/client")")"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_db.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
 
 SERVER_CONFIG="$(resolve_path_from_root "$(cfg_get "test.db.server_config" "config/server.conf")")"
 LOG_DIR="$(resolve_path_from_root "$(cfg_get "test.db.log_dir" "test_log")")"
@@ -25,36 +25,6 @@ fail() {
 
 info() {
     echo "[INFO] $1" | tee -a "${DB_LOG}"
-}
-
-trim_wrapping_quotes() {
-    local s="$1"
-    if [[ ${#s} -ge 2 ]]; then
-        local first="${s:0:1}"
-        local last="${s: -1}"
-        if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
-            s="${s:1:${#s}-2}"
-        fi
-    fi
-    echo "${s}"
-}
-
-build_conninfo() {
-    local host="$1"
-    local port="$2"
-    local user="$3"
-    local db="$4"
-    local password="$5"
-    local sslmode="$6"
-    local connect_timeout="$7"
-    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
-        "${host}" \
-        "${port}" \
-        "${user}" \
-        "${db}" \
-        "${password}" \
-        "${sslmode}" \
-        "${connect_timeout}"
 }
 
 expect_eq() {

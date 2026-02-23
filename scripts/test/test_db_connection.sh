@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_db.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
+source "${ROOT_DIR}/scripts/lib/pg.sh"
 
 SERVER_CONFIG="$(resolve_path_from_root "$(cfg_get "test.db.server_config" "config/server.conf")")"
 LOG_DIR="$(resolve_path_from_root "$(cfg_get "test.db.log_dir" "test_log")")"
@@ -14,6 +15,7 @@ load_env_file "${ENV_FILE}"
 
 mkdir -p "${LOG_DIR}"
 DB_LOG="$(make_timestamped_path "${LOG_DIR}" "db-connection-test" "log")"
+: > "${DB_LOG}"
 
 fail() {
     local msg="$1"
@@ -23,31 +25,6 @@ fail() {
     exit 1
 }
 
-conn_quote() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\'/\\\'}"
-    echo "${s}"
-}
-
-build_conninfo() {
-    local host="$1"
-    local port="$2"
-    local user="$3"
-    local db="$4"
-    local password="$5"
-    local sslmode="$6"
-    local connect_timeout="$7"
-    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
-        "${host}" \
-        "${port}" \
-        "${user}" \
-        "${db}" \
-        "${password}" \
-        "${sslmode}" \
-        "${connect_timeout}"
-}
-
 [[ -f "${SERVER_CONFIG}" ]] || fail "server config not found: ${SERVER_CONFIG}"
 command -v psql >/dev/null 2>&1 || fail "psql command not found"
 
@@ -55,8 +32,8 @@ DB_HOST="$(cfg_get_from_file "db.host" "127.0.0.1" "${SERVER_CONFIG}")"
 DB_PORT="$(cfg_get_from_file "db.port" "5432" "${SERVER_CONFIG}")"
 DB_NAME="$(cfg_get_from_file "db.name" "" "${SERVER_CONFIG}")"
 DB_SSLMODE="$(cfg_get_from_file "db.sslmode" "disable" "${SERVER_CONFIG}")"
-DB_USER="$(cfg_get_from_file "db.user" "" "${ENV_FILE}")"
-DB_PASSWORD="$(cfg_get_from_file "db.password" "" "${ENV_FILE}")"
+DB_USER="$(trim_wrapping_quotes "$(cfg_get_from_file "db.user" "" "${ENV_FILE}")")"
+DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db.password" "" "${ENV_FILE}")")"
 
 if [[ -z "${DB_NAME}" ]]; then
     fail "db.name is missing in ${SERVER_CONFIG}"
@@ -71,44 +48,20 @@ fi
 
 if [[ -z "${DB_PASSWORD}" ]]; then
     # backward-compat: legacy underscore/uppercase keys
-    DB_PASSWORD="$(cfg_get_from_file "db_password" "" "${ENV_FILE}")"
+    DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "db_password" "" "${ENV_FILE}")")"
 fi
 
 if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(cfg_get_from_file "DB_PASSWORD" "" "${ENV_FILE}")"
+    DB_PASSWORD="$(trim_wrapping_quotes "$(cfg_get_from_file "DB_PASSWORD" "" "${ENV_FILE}")")"
 fi
 
-if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(printenv "db.password" 2>/dev/null || true)"
-fi
-
-if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(printenv "db_password" 2>/dev/null || true)"
-fi
-
-if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(printenv "DB_PASSWORD" 2>/dev/null || true)"
-fi
-
-if [[ ${#DB_PASSWORD} -ge 2 ]]; then
-    first="${DB_PASSWORD:0:1}"
-    last="${DB_PASSWORD: -1}"
-    if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
-        DB_PASSWORD="${DB_PASSWORD:1:${#DB_PASSWORD}-2}"
-    fi
-fi
-
-if [[ -z "${DB_PASSWORD}" ]]; then
-    fail "db password is empty (set db.password in .env)"
-fi
-
-DB_CONNINFO="$(build_conninfo "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_NAME}" "${DB_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
+[[ -n "${DB_PASSWORD}" ]] || fail "db password is empty (set db.password in .env)"
 
 echo "[INFO] testing db connection ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 set +e
 DB_RESULT="$(
-    psql "${DB_CONNINFO}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "${DB_QUERY}"
+    pg_psql "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_NAME}" "${DB_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}" \
+        -tA -c "${DB_QUERY}" 2>>"${DB_LOG}"
 )"
 PSQL_RC=$?
 set -e

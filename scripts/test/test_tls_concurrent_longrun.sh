@@ -3,7 +3,7 @@ set -eEuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_tls.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
 
 SERVER_BIN="$(resolve_path_from_root "$(cfg_get "test.server_bin" "build/server")")"
 CLIENT_BIN="$(resolve_path_from_root "$(cfg_get "test.client_bin" "build/client")")"
@@ -158,6 +158,31 @@ extract_last_created_room_id() {
         matched = substr($0, RSTART, RLENGTH)
         sub(/^room created: /, "", matched)
         last_id = matched
+    }
+    END { if(last_id != "") print last_id }
+    ' "${file}" 2>/dev/null
+}
+
+extract_last_created_room_id_from_server_log() {
+    local file="$1"
+    local client_id="$2"
+    awk -v client_id="${client_id}" '
+    {
+        marker = client_id " created room ";
+        pos = index($0, marker);
+        if(pos == 0) next;
+
+        tail = substr($0, pos + length(marker));
+        id = "";
+        for(i = 1; i <= length(tail); ++i){
+            c = substr(tail, i, 1);
+            if(c ~ /[0-9]/){
+                id = id c;
+            } else if(id != ""){
+                break;
+            }
+        }
+        if(id != "") last_id = id;
     }
     END { if(last_id != "") print last_id }
     ' "${file}" 2>/dev/null
@@ -430,11 +455,14 @@ fi
 
 echo "[INFO] launching ${LONGRUN_CLIENT_COUNT} concurrent clients for ${LONGRUN_DURATION_SEC}s"
 RUN_ID="$(timestamp_now)"
-for ((i=1; i<=LONGRUN_CLIENT_COUNT; ++i)); do
-    client_idx="${i}"
-    fifo_path="$(mktemp -u "${RUN_DIR}/tls-longrun-client-${client_idx}-stdin-XXXX.fifo")"
-    mkfifo "${fifo_path}"
-    CLIENT_FIFOS+=("${fifo_path}")
+	for ((i=1; i<=LONGRUN_CLIENT_COUNT; ++i)); do
+	    client_idx="${i}"
+	    fifo_path="${RUN_DIR}/tls-longrun-client-${client_idx}-stdin.fifo"
+	    if [[ -e "${fifo_path}" ]]; then
+	        fail "fifo path already exists: ${fifo_path}"
+	    fi
+	    mkfifo "${fifo_path}"
+	    CLIENT_FIFOS+=("${fifo_path}")
 
     client_id="lr_${RUN_ID}_${client_idx}"
     client_pw="pw_${RUN_ID}_${client_idx}"
@@ -506,9 +534,13 @@ done
 
 for ((i=0; i<${#CLIENT_LOGS[@]}; ++i)); do
     cl="${CLIENT_LOGS[$i]}"
+    client_id="${CLIENT_IDS[$i]}"
     room_id=""
     for ((try=1; try<=ROOM_CREATE_WAIT_TRY; ++try)); do
         room_id="$(extract_last_created_room_id "${cl}" || true)"
+        if [[ -z "${room_id}" ]]; then
+            room_id="$(extract_last_created_room_id_from_server_log "${SERVER_LOG}" "${client_id}" || true)"
+        fi
         if [[ -n "${room_id}" ]]; then
             break
         fi

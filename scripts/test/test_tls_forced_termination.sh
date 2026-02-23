@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_tls.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
 
 SERVER_BIN="$(resolve_path_from_root "$(cfg_get "test.server_bin" "build/server")")"
 CLIENT_BIN="$(resolve_path_from_root "$(cfg_get "test.client_bin" "build/client")")"
@@ -22,11 +22,15 @@ mkdir -p "${LOG_DIR}"
 SERVER_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-server-forced" "log")"
 CLIENT1_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-client1-forced" "log")"
 CLIENT2_LOG="$(make_timestamped_path "${LOG_DIR}" "tls-client2-forced" "log")"
-CLIENT1_STDIN_FIFO="$(mktemp -u "${LOG_DIR}/tls-client1-stdin-XXXX.fifo")"
+WORK_DIR=""
+CLIENT1_STDIN_FIFO=""
 
 SERVER_PID=""
 CLIENT1_PID=""
 CLIENT1_WRITER_PID=""
+
+WORK_DIR="$(mktemp -d "${LOG_DIR}/tls-forced-work-XXXX")"
+CLIENT1_STDIN_FIFO="${WORK_DIR}/client1-stdin.fifo"
 
 if command -v rg >/dev/null 2>&1; then
     SEARCH_BIN="rg"
@@ -45,7 +49,8 @@ cleanup() {
         wait "${CLIENT1_WRITER_PID}" 2>/dev/null || true
     fi
 
-    rm -f "${CLIENT1_STDIN_FIFO}" 2>/dev/null || true
+    [[ -n "${CLIENT1_STDIN_FIFO}" ]] && rm -f "${CLIENT1_STDIN_FIFO}" 2>/dev/null || true
+    [[ -n "${WORK_DIR}" ]] && rm -rf "${WORK_DIR}" 2>/dev/null || true
 
     if [[ -n "${SERVER_PID}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
         kill "${SERVER_PID}" 2>/dev/null || true

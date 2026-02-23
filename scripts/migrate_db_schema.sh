@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
+source "${ROOT_DIR}/scripts/lib/pg.sh"
 
 SERVER_CONFIG_RAW="${1:-config/server.conf}"
 ENV_FILE_RAW="${2:-.env}"
@@ -12,14 +13,6 @@ CONNECT_TIMEOUT_SEC="${DB_CONNECT_TIMEOUT_SEC:-5}"
 
 SERVER_CONFIG="$(resolve_path_from_root "${SERVER_CONFIG_RAW}")"
 ENV_FILE="$(resolve_path_from_root "${ENV_FILE_RAW}")"
-
-to_bool() {
-    local v="$1"
-    case "${v,,}" in
-        1|true|yes|on) echo "1" ;;
-        *) echo "0" ;;
-    esac
-}
 
 fail() {
     echo "[FAIL] $1"
@@ -32,43 +25,6 @@ info() {
 
 warn() {
     echo "[WARN] $1"
-}
-
-conn_quote() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\'/\\\'}"
-    echo "${s}"
-}
-
-build_conninfo() {
-    local host="$1"
-    local port="$2"
-    local user="$3"
-    local db="$4"
-    local password="$5"
-    local sslmode="$6"
-    local connect_timeout="$7"
-    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
-        "${host}" \
-        "${port}" \
-        "${user}" \
-        "${db}" \
-        "${password}" \
-        "${sslmode}" \
-        "${connect_timeout}"
-}
-
-trim_wrapping_quotes() {
-    local s="$1"
-    if [[ ${#s} -ge 2 ]]; then
-        local first="${s:0:1}"
-        local last="${s: -1}"
-        if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
-            s="${s:1:${#s}-2}"
-        fi
-    fi
-    echo "${s}"
 }
 
 sql_literal() {
@@ -125,10 +81,15 @@ is_local_migrate_host() {
 psql_exec_password() {
     local db="$1"
     shift
-    local conninfo
-    conninfo="$(build_conninfo "${DB_HOST}" "${DB_PORT}" "${MIGRATE_DB_USER}" "${db}" "${MIGRATE_DB_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
-    psql "${conninfo}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+    pg_psql \
+        "${DB_HOST}" \
+        "${DB_PORT}" \
+        "${MIGRATE_DB_USER}" \
+        "${db}" \
+        "${MIGRATE_DB_PASSWORD}" \
+        "${DB_SSLMODE}" \
+        "${CONNECT_TIMEOUT_SEC}" \
+        "$@"
 }
 
 psql_as_postgres_peer() {
@@ -146,7 +107,7 @@ psql_as_postgres_peer() {
 psql_exec_peer() {
     local db="$1"
     shift
-    psql_as_postgres_peer -d "${db}" "$@"
+    psql_as_postgres_peer -p "${DB_PORT}" -d "${db}" "$@"
 }
 
 psql_exec() {

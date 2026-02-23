@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${TEST_CONFIG:-${ROOT_DIR}/config/test_suite.conf}"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
+source "${ROOT_DIR}/scripts/lib/pg.sh"
 
 LOG_DIR="$(resolve_path_from_root "$(cfg_get "suite.log_dir" "test_log")")"
 TLS_CONFIG="$(resolve_path_from_root "$(cfg_get "suite.tls_config" "config/test_tls.conf")")"
@@ -37,53 +38,8 @@ SKIP_COUNT=0
 declare -a FAILED_TESTS=()
 declare -a SKIPPED_TESTS=()
 
-to_bool() {
-    local v="$1"
-    case "${v,,}" in
-        1|true|yes|on) echo "1" ;;
-        *) echo "0" ;;
-    esac
-}
-
 is_enabled() {
     [[ "$(to_bool "$1")" == "1" ]]
-}
-
-trim_wrapping_quotes() {
-    local v="$1"
-    if [[ ${#v} -ge 2 ]]; then
-        local first="${v:0:1}"
-        local last="${v: -1}"
-        if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
-            v="${v:1:${#v}-2}"
-        fi
-    fi
-    echo "${v}"
-}
-
-conn_quote() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\'/\\\'}"
-    echo "${s}"
-}
-
-build_conninfo() {
-    local host="$1"
-    local port="$2"
-    local user="$3"
-    local db="$4"
-    local password="$5"
-    local sslmode="$6"
-    local connect_timeout="$7"
-    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
-        "${host}" \
-        "${port}" \
-        "${user}" \
-        "${db}" \
-        "${password}" \
-        "${sslmode}" \
-        "${connect_timeout}"
 }
 
 single_line() {
@@ -158,7 +114,7 @@ check_required_file() {
 }
 
 check_db_ready() {
-    local db_host db_port db_name db_sslmode db_user db_password db_conninfo db_result db_rc
+    local db_host db_port db_name db_sslmode db_user db_password db_result db_rc
     db_host="$(cfg_get_from_file "db.host" "127.0.0.1" "${SERVER_CONFIG}")"
     db_port="$(cfg_get_from_file "db.port" "5432" "${SERVER_CONFIG}")"
     db_name="$(cfg_get_from_file "db.name" "" "${SERVER_CONFIG}")"
@@ -179,12 +135,10 @@ check_db_ready() {
         suite_fail_fast "E_DB_CONFIG_INVALID" "db.password missing in ${ENV_FILE}"
     fi
 
-    db_conninfo="$(build_conninfo "${db_host}" "${db_port}" "${db_user}" "${db_name}" "${db_password}" "${db_sslmode}" "3")"
-
     set +e
     db_result="$(
-        psql "${db_conninfo}" \
-            --no-psqlrc -v ON_ERROR_STOP=1 -tA -c "SELECT 1"
+        pg_psql "${db_host}" "${db_port}" "${db_user}" "${db_name}" "${db_password}" "${db_sslmode}" "3" \
+            -tA -c "SELECT 1" 2>&1
     )"
     db_rc=$?
     set -e

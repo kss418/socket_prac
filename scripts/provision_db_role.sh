@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${ROOT_DIR}/scripts/test/test_tls_common.sh"
+source "${ROOT_DIR}/scripts/lib/common.sh"
+source "${ROOT_DIR}/scripts/lib/pg.sh"
 
 SERVER_CONFIG_RAW="${1:-config/server.conf}"
 ENV_FILE_RAW="${2:-.env}"
@@ -23,43 +24,6 @@ info() {
 
 warn() {
     echo "[WARN] $1"
-}
-
-conn_quote() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\'/\\\'}"
-    echo "${s}"
-}
-
-build_conninfo() {
-    local host="$1"
-    local port="$2"
-    local user="$3"
-    local db="$4"
-    local password="$5"
-    local sslmode="$6"
-    local connect_timeout="$7"
-    printf "host=%s port=%s user=%s dbname=%s password=%s sslmode=%s connect_timeout=%s" \
-        "${host}" \
-        "${port}" \
-        "${user}" \
-        "${db}" \
-        "${password}" \
-        "${sslmode}" \
-        "${connect_timeout}"
-}
-
-trim_wrapping_quotes() {
-    local s="$1"
-    if [[ ${#s} -ge 2 ]]; then
-        local first="${s:0:1}"
-        local last="${s: -1}"
-        if [[ ( "${first}" == "'" && "${last}" == "'" ) || ( "${first}" == "\"" && "${last}" == "\"" ) ]]; then
-            s="${s:1:${#s}-2}"
-        fi
-    fi
-    echo "${s}"
 }
 
 sql_literal() {
@@ -117,10 +81,15 @@ is_local_admin_host() {
 }
 
 psql_admin_password() {
-    local conninfo
-    conninfo="$(build_conninfo "${ADMIN_HOST}" "${ADMIN_PORT}" "${ADMIN_USER}" "${ADMIN_DB}" "${ADMIN_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
-    psql "${conninfo}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+    pg_psql \
+        "${ADMIN_HOST}" \
+        "${ADMIN_PORT}" \
+        "${ADMIN_USER}" \
+        "${ADMIN_DB}" \
+        "${ADMIN_PASSWORD}" \
+        "${DB_SSLMODE}" \
+        "${CONNECT_TIMEOUT_SEC}" \
+        "$@"
 }
 
 psql_as_postgres_peer() {
@@ -136,7 +105,7 @@ psql_as_postgres_peer() {
 }
 
 psql_admin_peer() {
-    psql_as_postgres_peer -d "${ADMIN_DB}" "$@"
+    psql_as_postgres_peer -p "${ADMIN_PORT}" -d "${ADMIN_DB}" "$@"
 }
 
 psql_admin() {
@@ -149,13 +118,18 @@ psql_admin() {
 
 psql_target() {
     if [[ "${ADMIN_USE_PEER_AUTH}" == "1" ]]; then
-        psql_as_postgres_peer -d "${DB_NAME}" "$@"
+        psql_as_postgres_peer -p "${ADMIN_PORT}" -d "${DB_NAME}" "$@"
         return $?
     fi
-    local conninfo
-    conninfo="$(build_conninfo "${ADMIN_HOST}" "${ADMIN_PORT}" "${ADMIN_USER}" "${DB_NAME}" "${ADMIN_PASSWORD}" "${DB_SSLMODE}" "${CONNECT_TIMEOUT_SEC}")"
-    psql "${conninfo}" \
-        --no-psqlrc -v ON_ERROR_STOP=1 "$@"
+    pg_psql \
+        "${ADMIN_HOST}" \
+        "${ADMIN_PORT}" \
+        "${ADMIN_USER}" \
+        "${DB_NAME}" \
+        "${ADMIN_PASSWORD}" \
+        "${DB_SSLMODE}" \
+        "${CONNECT_TIMEOUT_SEC}" \
+        "$@"
 }
 
 APP_DB_USER_LIT="$(sql_literal "${APP_DB_USER}")"
