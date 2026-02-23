@@ -241,6 +241,60 @@ void chat_io_worker::execute(const std::string& line){
         return;
     }
 
+    if(parsed.cmd == "/friend_request"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/friend_request <user_id>");
+            return;
+        }
+        request_friend(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/friend_accept"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/friend_accept <user_id>");
+            return;
+        }
+        accept_friend_request(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/friend_reject"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/friend_reject <user_id>");
+            return;
+        }
+        reject_friend_request(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/friend_remove"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/friend_remove <user_id>");
+            return;
+        }
+        remove_friend(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/list_friend"){
+        if(!parsed.args.empty()){
+            client_console::print_line("/list_friend");
+            return;
+        }
+        list_friend();
+        return;
+    }
+
+    if(parsed.cmd == "/list_friend_request"){
+        if(!parsed.args.empty()){
+            client_console::print_line("/list_friend_request");
+            return;
+        }
+        list_friend_request();
+        return;
+    }
+
     if(parsed.cmd == "/help"){
         if(parsed.args.size() != 0){
             client_console::print_line("/help");
@@ -271,11 +325,41 @@ void chat_io_worker::signup(const std::string& id, const std::string& pw){
     si.send.append(command_codec::cmd_register{id, pw});
 }
 
+void chat_io_worker::request_friend(const std::string& to_user_id){
+    si.send.append(command_codec::cmd_friend_request{to_user_id});
+}
+
+void chat_io_worker::accept_friend_request(const std::string& from_user_id){
+    si.send.append(command_codec::cmd_friend_accept{from_user_id});
+}
+
+void chat_io_worker::reject_friend_request(const std::string& from_user_id){
+    si.send.append(command_codec::cmd_friend_reject{from_user_id});
+}
+
+void chat_io_worker::remove_friend(const std::string& friend_user_id){
+    si.send.append(command_codec::cmd_friend_remove{friend_user_id});
+}
+
+void chat_io_worker::list_friend(){
+    si.send.append(command_codec::cmd_list_friend{});
+}
+
+void chat_io_worker::list_friend_request(){
+    si.send.append(command_codec::cmd_list_friend_request{});
+}
+
 void chat_io_worker::help(){
     std::lock_guard<std::mutex> lock(client_console::output_mutex());
     std::cout << "commands:\n"
               << "  /register <id> <pw>\n"
               << "  /login <id> <pw>\n"
+              << "  /friend_request <user_id>\n"
+              << "  /friend_accept <user_id>\n"
+              << "  /friend_reject <user_id>\n"
+              << "  /friend_remove <user_id>\n"
+              << "  /list_friend\n"
+              << "  /list_friend_request\n"
               << "  /nick <nickname>\n"
               << "  /help\n"
               << "  <text> (send chat message)\n";

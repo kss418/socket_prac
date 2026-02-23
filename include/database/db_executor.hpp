@@ -30,6 +30,24 @@ class db_executor{
     void execute_command(
         const command_codec::cmd_nick& cmd, epoll_registry& reg, int fd, std::string_view user_id
     );
+    void execute_command(
+        const command_codec::cmd_friend_request& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
+        const command_codec::cmd_friend_accept& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
+        const command_codec::cmd_friend_reject& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
+        const command_codec::cmd_friend_remove& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
+        const command_codec::cmd_list_friend& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
+        const command_codec::cmd_list_friend_request& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
     void execute_command(const command_codec::cmd_say& cmd, epoll_registry& reg, int fd);
     void execute_command(const command_codec::cmd_response& cmd, epoll_registry& reg, int fd);
 

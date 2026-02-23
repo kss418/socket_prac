@@ -49,6 +49,12 @@ std::string command_codec::encode(const command& cmd){
         if constexpr (std::is_same_v<T, cmd_response>) return "response\r" + c.text + "\n";
         if constexpr (std::is_same_v<T, cmd_login>) return "login\r" + c.id + "\r" + c.pw + "\n";
         if constexpr (std::is_same_v<T, cmd_register>) return "register\r" + c.id + "\r" + c.pw + "\n";
+        if constexpr (std::is_same_v<T, cmd_friend_request>) return "friend_request\r" + c.to_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_friend_accept>) return "friend_accept\r" + c.from_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_friend_reject>) return "friend_reject\r" + c.from_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_friend_remove>) return "friend_remove\r" + c.friend_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_list_friend>) return "list_friend\n";
+        if constexpr (std::is_same_v<T, cmd_list_friend_request>) return "list_friend_request\n";
     }, cmd);    
 }
 
@@ -94,6 +100,48 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_register{std::string(info.args[0]), std::string(info.args[1])};
+    }
+
+    if(info.cmd == "friend_request"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_friend_request{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "friend_accept"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_friend_accept{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "friend_reject"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_friend_reject{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "friend_remove"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_friend_remove{std::string(info.args[0])};
+    }
+
+    if(info.cmd == "list_friend"){
+        if(!info.args.empty()){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_list_friend{};
+    }
+
+    if(info.cmd == "list_friend_request"){
+        if(!info.args.empty()){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_list_friend_request{};
     }
 
     return std::unexpected(error_code::from_decode(decode_error::invalid_command));

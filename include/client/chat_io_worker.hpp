@@ -35,6 +35,12 @@ class chat_io_worker{
     void change_nickname(const std::string& nick);
     void login(const std::string& id, const std::string& pw);
     void signup(const std::string& id, const std::string& pw);
+    void request_friend(const std::string& to_user_id);
+    void accept_friend_request(const std::string& from_user_id);
+    void reject_friend_request(const std::string& from_user_id);
+    void remove_friend(const std::string& friend_user_id);
+    void list_friend();
+    void list_friend_request();
     void help();
 public:
     chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in);

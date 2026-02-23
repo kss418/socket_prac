@@ -12,6 +12,12 @@ namespace command_codec{
     struct cmd_response{ std::string text; };
     struct cmd_login{ std::string id, pw; };
     struct cmd_register{ std::string id, pw; };
+    struct cmd_friend_request{ std::string to_user_id; };
+    struct cmd_friend_accept{ std::string from_user_id; };
+    struct cmd_friend_reject{ std::string from_user_id; };
+    struct cmd_friend_remove{ std::string friend_user_id; };
+    struct cmd_list_friend{};
+    struct cmd_list_friend_request{};
 
     enum class decode_error : int{
         empty_line = 1,
@@ -23,7 +29,19 @@ namespace command_codec{
         std::string_view cmd;
         std::vector<std::string_view> args;
     };
-    using command = std::variant<cmd_say, cmd_nick, cmd_response, cmd_login, cmd_register>;
+    using command = std::variant<
+        cmd_say,
+        cmd_nick,
+        cmd_response,
+        cmd_login,
+        cmd_register,
+        cmd_friend_request,
+        cmd_friend_accept,
+        cmd_friend_reject,
+        cmd_friend_remove,
+        cmd_list_friend,
+        cmd_list_friend_request
+    >;
 
     decode_info decode_line(std::string_view line);
     std::string_view erase_delimeter(std::string_view line);
