@@ -5,6 +5,7 @@
 #include <array>
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <poll.h>
 #include <string_view>
 #include <sys/socket.h>
@@ -210,6 +211,10 @@ void chat_io_worker::execute(const std::string& line){
     }
 
     if(parsed.cmd[0] != '/'){
+        if(!selected_room_id){
+            client_console::print_line("select room first: /select_room <room_id>");
+            return;
+        }
         say(line);
         return;
     }
@@ -322,6 +327,24 @@ void chat_io_worker::execute(const std::string& line){
         return;
     }
 
+    if(parsed.cmd == "/leave_room"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/leave_room <room_id>");
+            return;
+        }
+        leave_room(parsed.args[0]);
+        return;
+    }
+
+    if(parsed.cmd == "/select_room"){
+        if(parsed.args.size() != 1){
+            client_console::print_line("/select_room <room_id>");
+            return;
+        }
+        select_room(parsed.args[0]);
+        return;
+    }
+
     if(parsed.cmd == "/list_room"){
         if(!parsed.args.empty()){
             client_console::print_line("/list_room");
@@ -346,7 +369,12 @@ void chat_io_worker::execute(const std::string& line){
 }
 
 void chat_io_worker::say(const std::string& line){
-    si.send.append(command_codec::cmd_say{line});
+    if(!selected_room_id){
+        client_console::print_line("select room first: /select_room <room_id>");
+        return;
+    }
+
+    si.send.append(command_codec::cmd_say{std::to_string(*selected_room_id), line});
 }
 
 void chat_io_worker::change_nickname(const std::string& nick){
@@ -397,6 +425,28 @@ void chat_io_worker::invite_room(const std::string& room_id, const std::string& 
     si.send.append(command_codec::cmd_invite_room{room_id, friend_user_id});
 }
 
+void chat_io_worker::leave_room(const std::string& room_id){
+    si.send.append(command_codec::cmd_leave_room{room_id});
+}
+
+void chat_io_worker::select_room(const std::string& room_id){
+    std::int64_t parsed_room_id = 0;
+    try{
+        std::size_t pos = 0;
+        parsed_room_id = std::stoll(room_id, &pos);
+        if(pos != room_id.size() || parsed_room_id <= 0){
+            client_console::print_line("invalid room id: /select_room <room_id>");
+            return;
+        }
+    } catch(...){
+        client_console::print_line("invalid room id: /select_room <room_id>");
+        return;
+    }
+
+    selected_room_id = parsed_room_id;
+    client_console::print_line("selected room: " + std::to_string(parsed_room_id));
+}
+
 void chat_io_worker::list_room(){
     si.send.append(command_codec::cmd_list_room{});
 }
@@ -415,8 +465,10 @@ void chat_io_worker::help(){
               << "  /create_room <room_name>\n"
               << "  /delete_room <room_id>\n"
               << "  /invite_room <room_id> <friend_user_id>\n"
+              << "  /leave_room <room_id>\n"
+              << "  /select_room <room_id>\n"
               << "  /list_room\n"
               << "  /nick <nickname>\n"
               << "  /help\n"
-              << "  <text> (send chat message)\n";
+              << "  <text> (send chat message, room must be selected)\n";
 }

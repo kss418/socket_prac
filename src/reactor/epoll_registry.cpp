@@ -84,6 +84,8 @@ std::expected <void, error_code> epoll_registry::unregister_fd(int fd){
         if(!ignorable) logger::log_error("del_fd failed", "epoll_registry::unregister_fd()", it->second, del_ep_exp);
     }
 
+    remove_fd_from_room_index(it->second);
+    remove_fd_from_user_index(it->second);
     infos.erase(it);
     connected_client_count = infos.size();
     logger::log_info("active clients: " + std::to_string(connected_client_count));
@@ -184,6 +186,49 @@ void epoll_registry::request_set_user_id(socket_info& si, std::string user_id){
     request_set_user_id(si.ufd.get(), std::move(user_id));
 }
 
+void epoll_registry::request_set_joined_rooms(int fd, std::vector<std::int64_t> room_ids){
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(set_joined_rooms_command{fd, std::move(room_ids)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::request_set_joined_rooms(socket_info& si, std::vector<std::int64_t> room_ids){
+    request_set_joined_rooms(si.ufd.get(), std::move(room_ids));
+}
+
+void epoll_registry::request_set_joined_rooms_for_user(
+    std::string user_id,
+    std::vector<std::int64_t> room_ids
+){
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(set_joined_rooms_for_user_command{std::move(user_id), std::move(room_ids)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::request_room_broadcast(
+    int sender_fd,
+    std::int64_t room_id,
+    command_codec::command cmd
+){
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(room_broadcast_command{sender_fd, room_id, std::move(cmd)});
+    }
+    request_wakeup();
+}
+
+void epoll_registry::request_room_broadcast(
+    socket_info& si,
+    std::int64_t room_id,
+    command_codec::command cmd
+){
+    request_room_broadcast(si.ufd.get(), room_id, std::move(cmd));
+}
+
 void epoll_registry::handle_command(register_command&& cmd){
     auto reg_exp = register_fd(std::move(cmd.fd), cmd.interest);
 }
@@ -235,7 +280,102 @@ void epoll_registry::handle_command(set_user_id_command&& cmd){
     auto it = infos.find(cmd.fd);
     if(it == infos.end()) return;
 
+    remove_fd_from_user_index(it->second);
+    set_fd_joined_rooms(it->second, {});
     it->second.user_id = std::move(cmd.user_id);
+    if(!it->second.user_id.empty()){
+        user_online_fds[it->second.user_id].insert(it->second.ufd.get());
+    }
+}
+
+void epoll_registry::handle_command(set_joined_rooms_command&& cmd){
+    auto it = infos.find(cmd.fd);
+    if(it == infos.end()) return;
+
+    set_fd_joined_rooms(it->second, std::move(cmd.room_ids));
+    logger::log_info(
+        "joined rooms indexed: " + std::to_string(it->second.joined_room_ids.size()),
+        it->second
+    );
+}
+
+void epoll_registry::handle_command(set_joined_rooms_for_user_command&& cmd){
+    auto user_it = user_online_fds.find(cmd.user_id);
+    if(user_it == user_online_fds.end()) return;
+
+    const std::unordered_set<int> fds = user_it->second;
+    for(int fd : fds){
+        auto it = infos.find(fd);
+        if(it == infos.end()) continue;
+
+        std::vector<std::int64_t> rooms_copy = cmd.room_ids;
+        set_fd_joined_rooms(it->second, std::move(rooms_copy));
+        logger::log_info(
+            "joined rooms indexed: " + std::to_string(it->second.joined_room_ids.size()),
+            it->second
+        );
+    }
+}
+
+void epoll_registry::handle_command(room_broadcast_command&& cmd){
+    auto room_it = room_online_fds.find(cmd.room_id);
+    if(room_it == room_online_fds.end()) return;
+
+    command_codec::command payload = cmd.cmd;
+    if(const auto* response = std::get_if<command_codec::cmd_response>(&cmd.cmd)){
+        std::string nickname = "guest";
+        auto sender_it = infos.find(cmd.sender_fd);
+        if(sender_it != infos.end() && !sender_it->second.nickname.empty()){
+            nickname = sender_it->second.nickname;
+        }
+        payload = command_codec::cmd_response{nickname + ": " + response->text};
+    }
+
+    const std::unordered_set<int> targets = room_it->second;
+    for(int fd : targets){
+        auto it = infos.find(fd);
+        if(it == infos.end()) continue;
+
+        auto append_exp = append_send(it->second, payload);
+        if(!append_exp) continue;
+    }
+}
+
+void epoll_registry::remove_fd_from_room_index(socket_info& si){
+    int fd = si.ufd.get();
+    for(std::int64_t room_id : si.joined_room_ids){
+        auto room_it = room_online_fds.find(room_id);
+        if(room_it == room_online_fds.end()) continue;
+
+        room_it->second.erase(fd);
+        if(room_it->second.empty()){
+            room_online_fds.erase(room_it);
+        }
+    }
+    si.joined_room_ids.clear();
+}
+
+void epoll_registry::remove_fd_from_user_index(socket_info& si){
+    if(si.user_id.empty()) return;
+
+    auto user_it = user_online_fds.find(si.user_id);
+    if(user_it == user_online_fds.end()) return;
+
+    user_it->second.erase(si.ufd.get());
+    if(user_it->second.empty()){
+        user_online_fds.erase(user_it);
+    }
+}
+
+void epoll_registry::set_fd_joined_rooms(socket_info& si, std::vector<std::int64_t>&& room_ids){
+    remove_fd_from_room_index(si);
+
+    int fd = si.ufd.get();
+    for(std::int64_t room_id : room_ids){
+        if(room_id <= 0) continue;
+        si.joined_room_ids.insert(room_id);
+        room_online_fds[room_id].insert(fd);
+    }
 }
 
 void epoll_registry::work(){

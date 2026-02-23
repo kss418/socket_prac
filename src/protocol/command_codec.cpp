@@ -45,7 +45,7 @@ std::string command_codec::encode(const command& cmd){
     return std::visit([](const auto& c) -> std::string {
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, cmd_nick>) return "nick\r" + c.nick + "\n";
-        if constexpr (std::is_same_v<T, cmd_say>) return "say\r" + c.text + "\n";
+        if constexpr (std::is_same_v<T, cmd_say>) return "say\r" + c.room_id + "\r" + c.text + "\n";
         if constexpr (std::is_same_v<T, cmd_response>) return "response\r" + c.text + "\n";
         if constexpr (std::is_same_v<T, cmd_login>) return "login\r" + c.id + "\r" + c.pw + "\n";
         if constexpr (std::is_same_v<T, cmd_register>) return "register\r" + c.id + "\r" + c.pw + "\n";
@@ -58,6 +58,7 @@ std::string command_codec::encode(const command& cmd){
         if constexpr (std::is_same_v<T, cmd_create_room>) return "create_room\r" + c.room_name + "\n";
         if constexpr (std::is_same_v<T, cmd_delete_room>) return "delete_room\r" + c.room_id + "\n";
         if constexpr (std::is_same_v<T, cmd_invite_room>) return "invite_room\r" + c.room_id + "\r" + c.friend_user_id + "\n";
+        if constexpr (std::is_same_v<T, cmd_leave_room>) return "leave_room\r" + c.room_id + "\n";
         if constexpr (std::is_same_v<T, cmd_list_room>) return "list_room\n";
     }, cmd);    
 }
@@ -72,10 +73,10 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
     }
 
     if(info.cmd == "say"){
-        if(info.args.size() != 1){
+        if(info.args.size() != 2){
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
-        return cmd_say{std::string(info.args[0])};
+        return cmd_say{std::string(info.args[0]), std::string(info.args[1])};
     }
 
     if(info.cmd == "nick"){
@@ -167,6 +168,13 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_invite_room{std::string(info.args[0]), std::string(info.args[1])};
+    }
+
+    if(info.cmd == "leave_room"){
+        if(info.args.size() != 1){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_leave_room{std::string(info.args[0])};
     }
 
     if(info.cmd == "list_room"){

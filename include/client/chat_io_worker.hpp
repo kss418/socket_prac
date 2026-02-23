@@ -4,7 +4,9 @@
 #include "core/unique_fd.hpp"
 #include "net/io_helper.hpp"
 #include <atomic>
+#include <cstdint>
 #include <expected>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -21,6 +23,7 @@ class chat_io_worker{
     std::atomic_bool& logged_in;
     recv_buffer stdin_buf;
     bool peer_verified = false;
+    std::optional<std::int64_t> selected_room_id;
 
     static parsed_command parse(const std::string& line);
     short socket_events() const;
@@ -44,6 +47,8 @@ class chat_io_worker{
     void create_room(const std::string& room_name);
     void delete_room(const std::string& room_id);
     void invite_room(const std::string& room_id, const std::string& friend_user_id);
+    void leave_room(const std::string& room_id);
+    void select_room(const std::string& room_id);
     void list_room();
     void help();
 public:

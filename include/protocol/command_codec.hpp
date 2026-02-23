@@ -7,7 +7,10 @@
 #include <variant>
 
 namespace command_codec{
-    struct cmd_say{ std::string text; };
+    struct cmd_say{
+        std::string room_id;
+        std::string text;
+    };
     struct cmd_nick{ std::string nick; };
     struct cmd_response{ std::string text; };
     struct cmd_login{ std::string id, pw; };
@@ -24,6 +27,7 @@ namespace command_codec{
         std::string room_id;
         std::string friend_user_id;
     };
+    struct cmd_leave_room{ std::string room_id; };
     struct cmd_list_room{};
 
     enum class decode_error : int{
@@ -51,6 +55,7 @@ namespace command_codec{
         cmd_create_room,
         cmd_delete_room,
         cmd_invite_room,
+        cmd_leave_room,
         cmd_list_room
     >;
 

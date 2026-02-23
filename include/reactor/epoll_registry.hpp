@@ -3,11 +3,14 @@
 #include "reactor/epoll_wakeup.hpp"
 #include "net/io_helper.hpp"
 #include "core/unique_fd.hpp"
+#include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <queue>
 #include <mutex>
 #include <variant>
 #include <cstddef>
+#include <vector>
 
 class tls_context;
 
@@ -41,18 +44,39 @@ class epoll_registry : public epoll_wakeup{
         std::string user_id;
     };
 
+    struct set_joined_rooms_command{
+        int fd;
+        std::vector<std::int64_t> room_ids;
+    };
+
+    struct set_joined_rooms_for_user_command{
+        std::string user_id;
+        std::vector<std::int64_t> room_ids;
+    };
+
+    struct room_broadcast_command{
+        int sender_fd;
+        std::int64_t room_id;
+        command_codec::command cmd;
+    };
+
     using command = std::variant<
         register_command,
         unregister_command,
         send_one_command,
         broadcast_command,
         change_nickname_command,
-        set_user_id_command
+        set_user_id_command,
+        set_joined_rooms_command,
+        set_joined_rooms_for_user_command,
+        room_broadcast_command
     >;
 
     std::queue<command> cmd_q;
     std::mutex cmd_mtx;
     std::unordered_map <int, socket_info> infos;
+    std::unordered_map<std::int64_t, std::unordered_set<int>> room_online_fds;
+    std::unordered_map<std::string, std::unordered_set<int>> user_online_fds;
     std::size_t connected_client_count = 0;
     tls_context& tls_ctx;
 
@@ -67,6 +91,12 @@ class epoll_registry : public epoll_wakeup{
     void handle_command(broadcast_command&& cmd);
     void handle_command(change_nickname_command&& cmd);
     void handle_command(set_user_id_command&& cmd);
+    void handle_command(set_joined_rooms_command&& cmd);
+    void handle_command(set_joined_rooms_for_user_command&& cmd);
+    void handle_command(room_broadcast_command&& cmd);
+    void remove_fd_from_room_index(socket_info& si);
+    void remove_fd_from_user_index(socket_info& si);
+    void set_fd_joined_rooms(socket_info& si, std::vector<std::int64_t>&& room_ids);
 public:
     using socket_info_it = std::unordered_map<int, socket_info>::iterator;
     epoll_registry(const epoll_registry&) = delete;
@@ -88,6 +118,11 @@ public:
     void request_change_nickname(socket_info& si, std::string nick);
     void request_set_user_id(int fd, std::string user_id);
     void request_set_user_id(socket_info& si, std::string user_id);
+    void request_set_joined_rooms(int fd, std::vector<std::int64_t> room_ids);
+    void request_set_joined_rooms(socket_info& si, std::vector<std::int64_t> room_ids);
+    void request_set_joined_rooms_for_user(std::string user_id, std::vector<std::int64_t> room_ids);
+    void request_room_broadcast(int sender_fd, std::int64_t room_id, command_codec::command cmd);
+    void request_room_broadcast(socket_info& si, std::int64_t room_id, command_codec::command cmd);
 
     void work();
 

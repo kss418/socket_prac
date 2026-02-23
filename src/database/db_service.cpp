@@ -359,6 +359,75 @@ std::expected<db_service::invite_room_result, error_code> db_service::invite_roo
     }
 }
 
+std::expected<std::optional<std::int64_t>, error_code> db_service::create_room_message(
+    std::int64_t room_id,
+    std::string_view sender_user_id,
+    std::string_view body
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::work tx(connector.connection());
+        auto rows = tx.exec(
+            "INSERT INTO chat.messages (room_id, sender_user_id, body) "
+            "SELECT $1, $2, $3 "
+            "WHERE EXISTS ("
+            "  SELECT 1 FROM chat.room_members "
+            "  WHERE room_id = $1 AND user_id = $2"
+            ") "
+            "RETURNING id",
+            pqxx::params{room_id, sender_user_id, body}
+        );
+        tx.commit();
+        if(rows.empty()) return std::optional<std::int64_t>{};
+        return std::optional<std::int64_t>{rows[0][0].as<std::int64_t>()};
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
+std::expected<db_service::leave_room_result, error_code> db_service::leave_room(
+    std::string_view user_id,
+    std::int64_t room_id
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::work tx(connector.connection());
+
+        auto owner_rows = tx.exec(
+            "SELECT owner_user_id "
+            "FROM chat.rooms "
+            "WHERE id = $1 "
+            "LIMIT 1",
+            pqxx::params{room_id}
+        );
+        if(owner_rows.empty()){
+            tx.commit();
+            return leave_room_result::not_member_or_room_not_found;
+        }
+
+        const std::string owner_user_id = owner_rows[0][0].c_str();
+        if(owner_user_id == user_id){
+            tx.commit();
+            return leave_room_result::owner_cannot_leave;
+        }
+
+        auto leave_rows = tx.exec(
+            "DELETE FROM chat.room_members "
+            "WHERE room_id = $1 AND user_id = $2 "
+            "RETURNING room_id",
+            pqxx::params{room_id, user_id}
+        );
+
+        tx.commit();
+        if(leave_rows.empty()) return leave_room_result::not_member_or_room_not_found;
+        return leave_room_result::left;
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}
+
 std::expected<std::vector<db_service::room_info>, error_code> db_service::list_rooms(
     std::string_view user_id
 ) noexcept{

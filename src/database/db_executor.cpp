@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 db_executor::~db_executor(){ stop(); }
 
@@ -17,6 +18,7 @@ db_executor::db_executor(db_service& db, std::size_t sz) : db(db){
 bool db_executor::is_db_command(const command_codec::command& cmd) noexcept{
     return std::holds_alternative<command_codec::cmd_login>(cmd)
         || std::holds_alternative<command_codec::cmd_register>(cmd)
+        || std::holds_alternative<command_codec::cmd_say>(cmd)
         || std::holds_alternative<command_codec::cmd_nick>(cmd)
         || std::holds_alternative<command_codec::cmd_friend_request>(cmd)
         || std::holds_alternative<command_codec::cmd_friend_accept>(cmd)
@@ -27,6 +29,7 @@ bool db_executor::is_db_command(const command_codec::command& cmd) noexcept{
         || std::holds_alternative<command_codec::cmd_create_room>(cmd)
         || std::holds_alternative<command_codec::cmd_delete_room>(cmd)
         || std::holds_alternative<command_codec::cmd_invite_room>(cmd)
+        || std::holds_alternative<command_codec::cmd_leave_room>(cmd)
         || std::holds_alternative<command_codec::cmd_list_room>(cmd);
 }
 
@@ -91,7 +94,8 @@ void db_executor::execute(const task& t){
     std::visit([this, &reg, fd, &user_id](const auto& c){
         using T = std::decay_t<decltype(c)>;
         if constexpr (
-            std::is_same_v<T, command_codec::cmd_nick>
+            std::is_same_v<T, command_codec::cmd_say>
+            || std::is_same_v<T, command_codec::cmd_nick>
             || std::is_same_v<T, command_codec::cmd_friend_request>
             || std::is_same_v<T, command_codec::cmd_friend_accept>
             || std::is_same_v<T, command_codec::cmd_friend_reject>
@@ -101,6 +105,7 @@ void db_executor::execute(const task& t){
             || std::is_same_v<T, command_codec::cmd_create_room>
             || std::is_same_v<T, command_codec::cmd_delete_room>
             || std::is_same_v<T, command_codec::cmd_invite_room>
+            || std::is_same_v<T, command_codec::cmd_leave_room>
             || std::is_same_v<T, command_codec::cmd_list_room>
         ){
             execute_command(c, reg, fd, user_id);
@@ -111,6 +116,20 @@ void db_executor::execute(const task& t){
     }, cmd);
 }
 
+std::expected<std::vector<std::int64_t>, error_code> db_executor::load_joined_room_ids(std::string_view user_id){
+    auto list_rooms_exp = db.list_rooms(user_id);
+    if(!list_rooms_exp){
+        return std::unexpected(list_rooms_exp.error());
+    }
+
+    std::vector<std::int64_t> joined_room_ids;
+    joined_room_ids.reserve(list_rooms_exp->size());
+    for(const auto& room : *list_rooms_exp){
+        joined_room_ids.push_back(room.id);
+    }
+    return joined_room_ids;
+}
+
 void db_executor::execute_command(
     const command_codec::cmd_login& cmd, epoll_registry& reg, int fd
 ){
@@ -119,17 +138,34 @@ void db_executor::execute_command(
         logger::log_error("login failed", "db_executor::execute_command()", login_exp.error());
         reg.request_send(fd, command_codec::cmd_response{"login failed"});
         reg.request_set_user_id(fd, "");
+        reg.request_set_joined_rooms(fd, {});
         reg.request_change_nickname(fd, "guest");
         return;
     }
 
     if(*login_exp){
+        auto joined_room_ids_exp = load_joined_room_ids(cmd.id);
+        if(!joined_room_ids_exp){
+            logger::log_error(
+                "load joined rooms failed",
+                "db_executor::execute_command()",
+                joined_room_ids_exp.error()
+            );
+            reg.request_send(fd, command_codec::cmd_response{"login failed"});
+            reg.request_set_user_id(fd, "");
+            reg.request_set_joined_rooms(fd, {});
+            reg.request_change_nickname(fd, "guest");
+            return;
+        }
+
         reg.request_set_user_id(fd, cmd.id);
+        reg.request_set_joined_rooms(fd, std::move(*joined_room_ids_exp));
         reg.request_change_nickname(fd, **login_exp);
         reg.request_send(fd, command_codec::cmd_response{"login success"});
     }
     else{
         reg.request_set_user_id(fd, "");
+        reg.request_set_joined_rooms(fd, {});
         reg.request_change_nickname(fd, "guest");
         reg.request_send(fd, command_codec::cmd_response{"login failed"});
     }
@@ -152,8 +188,40 @@ void db_executor::execute_command(
 }
 
 void db_executor::execute_command(
-    const command_codec::cmd_say&, epoll_registry&, int
-){}
+    const command_codec::cmd_say& cmd, epoll_registry& reg, int fd, std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    std::int64_t room_id = 0;
+    try{
+        std::size_t pos = 0;
+        room_id = std::stoll(cmd.room_id, &pos);
+        if(pos != cmd.room_id.size() || room_id <= 0){
+            reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+            return;
+        }
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+        return;
+    }
+
+    auto msg_exp = db.create_room_message(room_id, user_id, cmd.text);
+    if(!msg_exp){
+        logger::log_error("create room message failed", "db_executor::execute_command()", msg_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"send failed"});
+        return;
+    }
+
+    if(!*msg_exp){
+        reg.request_send(fd, command_codec::cmd_response{"room not found or no permission"});
+        return;
+    }
+
+    reg.request_room_broadcast(fd, room_id, command_codec::cmd_response{cmd.text});
+}
 
 void db_executor::execute_command(
     const command_codec::cmd_nick& cmd, epoll_registry& reg, int fd, std::string_view user_id
@@ -397,6 +465,17 @@ void db_executor::execute_command(
             "room created: " + std::to_string(*create_exp) + " (" + cmd.room_name + ")"
         }
     );
+    auto joined_room_ids_exp = load_joined_room_ids(user_id);
+    if(!joined_room_ids_exp){
+        logger::log_warn(
+            "refresh joined rooms index failed",
+            "db_executor::execute_command()",
+            joined_room_ids_exp
+        );
+    }
+    else{
+        reg.request_set_joined_rooms(fd, std::move(*joined_room_ids_exp));
+    }
     logger::log_info(std::string(user_id) + " created room " + std::to_string(*create_exp));
 }
 
@@ -436,6 +515,17 @@ void db_executor::execute_command(
         return;
     }
 
+    auto joined_room_ids_exp = load_joined_room_ids(user_id);
+    if(!joined_room_ids_exp){
+        logger::log_warn(
+            "refresh joined rooms index failed",
+            "db_executor::execute_command()",
+            joined_room_ids_exp
+        );
+    }
+    else{
+        reg.request_set_joined_rooms(fd, std::move(*joined_room_ids_exp));
+    }
     reg.request_send(fd, command_codec::cmd_response{"room deleted: " + std::to_string(room_id)});
     logger::log_info(std::string(user_id) + " deleted room " + std::to_string(room_id));
 }
@@ -478,6 +568,32 @@ void db_executor::execute_command(
 
     switch(*invite_exp){
         case db_service::invite_room_result::invited:
+            {
+                auto inviter_rooms_exp = load_joined_room_ids(user_id);
+                if(!inviter_rooms_exp){
+                    logger::log_warn(
+                        "refresh inviter joined rooms index failed",
+                        "db_executor::execute_command()",
+                        inviter_rooms_exp
+                    );
+                }
+                else{
+                    reg.request_set_joined_rooms_for_user(std::string(user_id), std::move(*inviter_rooms_exp));
+                }
+            }
+            {
+                auto invitee_rooms_exp = load_joined_room_ids(cmd.friend_user_id);
+                if(!invitee_rooms_exp){
+                    logger::log_warn(
+                        "refresh invitee joined rooms index failed",
+                        "db_executor::execute_command()",
+                        invitee_rooms_exp
+                    );
+                }
+                else{
+                    reg.request_set_joined_rooms_for_user(cmd.friend_user_id, std::move(*invitee_rooms_exp));
+                }
+            }
             reg.request_send(
                 fd,
                 command_codec::cmd_response{
@@ -498,6 +614,64 @@ void db_executor::execute_command(
             return;
         case db_service::invite_room_result::room_not_found_or_no_permission:
             reg.request_send(fd, command_codec::cmd_response{"room not found or no permission"});
+            return;
+    }
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_leave_room& cmd,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    std::int64_t room_id = 0;
+    try{
+        std::size_t pos = 0;
+        room_id = std::stoll(cmd.room_id, &pos);
+        if(pos != cmd.room_id.size() || room_id <= 0){
+            reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+            return;
+        }
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+        return;
+    }
+
+    auto leave_exp = db.leave_room(user_id, room_id);
+    if(!leave_exp){
+        logger::log_error("leave room failed", "db_executor::execute_command()", leave_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"leave room failed"});
+        return;
+    }
+
+    switch(*leave_exp){
+        case db_service::leave_room_result::left:
+            {
+                auto joined_room_ids_exp = load_joined_room_ids(user_id);
+                if(!joined_room_ids_exp){
+                    logger::log_warn(
+                        "refresh joined rooms index failed",
+                        "db_executor::execute_command()",
+                        joined_room_ids_exp
+                    );
+                }
+                else{
+                    reg.request_set_joined_rooms_for_user(std::string(user_id), std::move(*joined_room_ids_exp));
+                }
+            }
+            reg.request_send(fd, command_codec::cmd_response{"left room: " + std::to_string(room_id)});
+            logger::log_info(std::string(user_id) + " left room " + std::to_string(room_id));
+            return;
+        case db_service::leave_room_result::not_member_or_room_not_found:
+            reg.request_send(fd, command_codec::cmd_response{"room not found or not joined"});
+            return;
+        case db_service::leave_room_result::owner_cannot_leave:
+            reg.request_send(fd, command_codec::cmd_response{"room owner cannot leave (delete room instead)"});
             return;
     }
 }

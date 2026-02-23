@@ -24,6 +24,11 @@ public:
         not_friend,
         room_not_found_or_no_permission
     };
+    enum class leave_room_result{
+        left = 0,
+        not_member_or_room_not_found,
+        owner_cannot_leave
+    };
 
 private:
     db_connector& connector;
@@ -76,6 +81,15 @@ public:
         std::string_view inviter_user_id,
         std::int64_t room_id,
         std::string_view friend_user_id
+    ) noexcept;
+    std::expected<std::optional<std::int64_t>, error_code> create_room_message(
+        std::int64_t room_id,
+        std::string_view sender_user_id,
+        std::string_view body
+    ) noexcept;
+    std::expected<leave_room_result, error_code> leave_room(
+        std::string_view user_id,
+        std::int64_t room_id
     ) noexcept;
     std::expected<std::vector<room_info>, error_code> list_rooms(
         std::string_view user_id

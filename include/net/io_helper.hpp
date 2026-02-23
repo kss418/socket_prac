@@ -4,8 +4,10 @@
 #include "net/fd_helper.hpp"
 #include "net/tls_session.hpp"
 #include "protocol/command_codec.hpp"
+#include <cstdint>
 #include <string_view>
 #include <string>
+#include <unordered_set>
 
 constexpr int BUF_SIZE = 4096;
 
@@ -52,6 +54,7 @@ struct socket_info{
     endpoint ep;
     std::string user_id;
     std::string nickname = "guest";
+    std::unordered_set<std::int64_t> joined_room_ids;
 };
 
 struct recv_info{

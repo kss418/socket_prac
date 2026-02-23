@@ -25,6 +25,7 @@ class db_executor{
     std::queue<task> tasks;
     void worker_loop(std::stop_token st);
     void execute(const task& t);
+    std::expected<std::vector<std::int64_t>, error_code> load_joined_room_ids(std::string_view user_id);
     void execute_command(const command_codec::cmd_login& cmd, epoll_registry& reg, int fd);
     void execute_command(const command_codec::cmd_register& cmd, epoll_registry& reg, int fd);
     void execute_command(
@@ -58,9 +59,14 @@ class db_executor{
         const command_codec::cmd_invite_room& cmd, epoll_registry& reg, int fd, std::string_view user_id
     );
     void execute_command(
+        const command_codec::cmd_leave_room& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
+    void execute_command(
         const command_codec::cmd_list_room& cmd, epoll_registry& reg, int fd, std::string_view user_id
     );
-    void execute_command(const command_codec::cmd_say& cmd, epoll_registry& reg, int fd);
+    void execute_command(
+        const command_codec::cmd_say& cmd, epoll_registry& reg, int fd, std::string_view user_id
+    );
     void execute_command(const command_codec::cmd_response& cmd, epoll_registry& reg, int fd);
 
 public:
