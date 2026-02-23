@@ -22,6 +22,9 @@ CLOSE_WAIT_SEC="$(cfg_get "test.longrun.close_wait_sec" "20")"
 MIN_UNIQUE_SENDERS_PER_CLIENT="$(cfg_get "test.longrun.min_unique_senders_per_client" "2")"
 REGISTER_LOGIN_DELAY_SEC="$(cfg_get "test.longrun.register_login_delay_sec" "0.2")"
 LOGIN_SETTLE_SEC="$(cfg_get "test.longrun.login_settle_sec" "1")"
+ROOM_MODE="$(cfg_get "test.longrun.room_mode" "per_client")"
+ROOM_CREATE_WAIT_TRY="$(cfg_get "test.longrun.room_create_wait_try" "100")"
+ROOM_CREATE_WAIT_INTERVAL_SEC="$(cfg_get "test.longrun.room_create_wait_interval_sec" "0.1")"
 MESSAGE_INTERVAL_SEC="$(cfg_get "test.longrun.message_interval_sec" "5")"
 PROGRESS_INTERVAL_SEC="$(cfg_get "test.longrun.progress_interval_sec" "30")"
 MESSAGE_PREFIX="$(cfg_get "test.longrun.message_prefix" "longrun-msg")"
@@ -64,6 +67,7 @@ declare -a CLIENT_LOGS=()
 declare -a CLIENT_MSG_SEQ=()
 declare -a CLIENT_IDS=()
 declare -a CLIENT_PWS=()
+declare -a CLIENT_ROOM_IDS=()
 
 if command -v rg >/dev/null 2>&1; then
     SEARCH_BIN="rg"
@@ -145,6 +149,18 @@ count_unique_senders_in_client_log() {
     else
         echo "${out}"
     fi
+}
+
+extract_last_created_room_id() {
+    local file="$1"
+    awk '
+    match($0, /room created: [0-9]+/) {
+        matched = substr($0, RSTART, RLENGTH)
+        sub(/^room created: /, "", matched)
+        last_id = matched
+    }
+    END { if(last_id != "") print last_id }
+    ' "${file}" 2>/dev/null
 }
 
 kill_pid_list() {
@@ -386,6 +402,13 @@ wait_pid_exit_with_timeout() {
 if [[ "${LONGRUN_CLIENT_COUNT}" -lt "${MIN_UNIQUE_SENDERS_PER_CLIENT}" ]]; then
     MIN_UNIQUE_SENDERS_PER_CLIENT="${LONGRUN_CLIENT_COUNT}"
 fi
+if [[ "${ROOM_MODE}" != "per_client" ]]; then
+    fail "unsupported test.longrun.room_mode: ${ROOM_MODE} (supported: per_client)"
+fi
+if [[ "${MIN_UNIQUE_SENDERS_PER_CLIENT}" -gt 1 ]]; then
+    echo "[INFO] room_mode=per_client -> overriding min_unique_senders_per_client to 1"
+    MIN_UNIQUE_SENDERS_PER_CLIENT=1
+fi
 
 precleanup_stale_longrun_processes
 
@@ -471,6 +494,43 @@ done
 if [[ "${LOGIN_SETTLE_SEC}" != "0" ]]; then
     sleep "${LOGIN_SETTLE_SEC}"
 fi
+
+for ((i=0; i<${#CLIENT_FIFO_FDS[@]}; ++i)); do
+    fd="${CLIENT_FIFO_FDS[$i]}"
+    client_idx=$((i + 1))
+    room_name="lr_room_${RUN_ID}_${client_idx}"
+    if ! printf '/create_room %s\n' "${room_name}" >&${fd}; then
+        fail "failed to write create_room command to client ${client_idx} fifo"
+    fi
+done
+
+for ((i=0; i<${#CLIENT_LOGS[@]}; ++i)); do
+    cl="${CLIENT_LOGS[$i]}"
+    room_id=""
+    for ((try=1; try<=ROOM_CREATE_WAIT_TRY; ++try)); do
+        room_id="$(extract_last_created_room_id "${cl}" || true)"
+        if [[ -n "${room_id}" ]]; then
+            break
+        fi
+        if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+            fail "server crashed while waiting room creation logs"
+        fi
+        sleep "${ROOM_CREATE_WAIT_INTERVAL_SEC}"
+    done
+    if [[ -z "${room_id}" ]]; then
+        fail "failed to detect created room id from client log (${cl})"
+    fi
+    CLIENT_ROOM_IDS+=("${room_id}")
+done
+
+for ((i=0; i<${#CLIENT_FIFO_FDS[@]}; ++i)); do
+    fd="${CLIENT_FIFO_FDS[$i]}"
+    client_idx=$((i + 1))
+    room_id="${CLIENT_ROOM_IDS[$i]}"
+    if ! printf '/select_room %s\n' "${room_id}" >&${fd}; then
+        fail "failed to write select_room command to client ${client_idx} fifo"
+    fi
+done
 
 connected_ready=0
 for ((try=1; try<=CONNECT_WAIT_TRY; ++try)); do
