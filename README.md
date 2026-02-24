@@ -93,6 +93,54 @@ cd /path/to/socket_prac
 
 If you changed server port in `config/server.conf`, use that port in the client command.
 
+## Client Usage
+
+Client executable usage:
+
+```bash
+./client [ip] [port] [ca_path]
+```
+
+- default `ip`: `127.0.0.1`
+- default `port`: `8080`
+- default `ca_path`: `certs/ca.crt.pem`
+
+Example (local server):
+
+```bash
+./client 127.0.0.1 8080 certs/ca.crt.pem
+```
+
+Basic flow after connect:
+
+1. Create account: `/register <id> <pw>`
+2. Login: `/login <id> <pw>`
+3. Create room: `/create_room <room_name>`
+4. List rooms: `/list_room`
+5. Select room: `/select_room <room_id>`
+6. Send message: `<text>`
+7. Load history: `/history <room_id> <limit>`
+
+Main chat commands:
+
+- `/register <id> <pw>`
+- `/login <id> <pw>`
+- `/nick <nickname>`
+- `/friend_request <user_id>`
+- `/friend_accept <user_id>`
+- `/friend_reject <user_id>`
+- `/friend_remove <user_id>`
+- `/list_friend`
+- `/list_friend_request`
+- `/create_room <room_name>`
+- `/delete_room <room_id>`
+- `/invite_room <room_id> <friend_user_id>`
+- `/leave_room <room_id>`
+- `/select_room <room_id>`
+- `/list_room`
+- `/history <room_id> <limit>` (`limit`: 1~100)
+- `/help`
+
 ## Useful deploy options
 
 ```bash

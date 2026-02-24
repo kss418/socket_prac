@@ -28,7 +28,7 @@ int main(int argc, char** argv){
     auto client_exp = chat_client::create(ip.c_str(), port.c_str(), ca_path.string());
     if(!client_exp) return 1;
 
-    client_console::print_line("connected to" + ip + ":" + port);
+    client_console::print_line("connected to " + ip + ":" + port);
     auto run_exp = client_exp->run();
     if(!run_exp) return 1;
 
