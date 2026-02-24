@@ -30,7 +30,8 @@ bool db_executor::is_db_command(const command_codec::command& cmd) noexcept{
         || std::holds_alternative<command_codec::cmd_delete_room>(cmd)
         || std::holds_alternative<command_codec::cmd_invite_room>(cmd)
         || std::holds_alternative<command_codec::cmd_leave_room>(cmd)
-        || std::holds_alternative<command_codec::cmd_list_room>(cmd);
+        || std::holds_alternative<command_codec::cmd_list_room>(cmd)
+        || std::holds_alternative<command_codec::cmd_history>(cmd);
 }
 
 void db_executor::stop(){
@@ -107,6 +108,7 @@ void db_executor::execute(const task& t){
             || std::is_same_v<T, command_codec::cmd_invite_room>
             || std::is_same_v<T, command_codec::cmd_leave_room>
             || std::is_same_v<T, command_codec::cmd_list_room>
+            || std::is_same_v<T, command_codec::cmd_history>
         ){
             execute_command(c, reg, fd, user_id);
         }
@@ -706,4 +708,80 @@ void db_executor::execute_command(
         );
     }
     logger::log_info(std::string(user_id) + " request list_room");
+}
+
+void db_executor::execute_command(
+    const command_codec::cmd_history& cmd,
+    epoll_registry& reg,
+    int fd,
+    std::string_view user_id
+){
+    if(user_id.empty()){
+        reg.request_send(fd, command_codec::cmd_response{"login first"});
+        return;
+    }
+
+    std::int64_t room_id = 0;
+    try{
+        std::size_t pos = 0;
+        room_id = std::stoll(cmd.room_id, &pos);
+        if(pos != cmd.room_id.size() || room_id <= 0){
+            reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+            return;
+        }
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid room id"});
+        return;
+    }
+
+    std::int32_t limit = 0;
+    try{
+        std::size_t pos = 0;
+        const long long parsed = std::stoll(cmd.limit, &pos);
+        if(pos != cmd.limit.size() || parsed <= 0 || parsed > 100){
+            reg.request_send(fd, command_codec::cmd_response{"invalid limit (1-100)"});
+            return;
+        }
+        limit = static_cast<std::int32_t>(parsed);
+    } catch(...){
+        reg.request_send(fd, command_codec::cmd_response{"invalid limit (1-100)"});
+        return;
+    }
+
+    auto history_exp = db.list_room_messages(user_id, room_id, limit);
+    if(!history_exp){
+        logger::log_error("history query failed", "db_executor::execute_command()", history_exp.error());
+        reg.request_send(fd, command_codec::cmd_response{"history query failed"});
+        return;
+    }
+
+    if(!*history_exp){
+        reg.request_send(fd, command_codec::cmd_response{"room not found or no permission"});
+        return;
+    }
+
+    const auto& history = **history_exp;
+    reg.request_send(
+        fd,
+        command_codec::cmd_response{
+            "history: room=" + std::to_string(room_id) + " count=" + std::to_string(history.size())
+        }
+    );
+    for(const auto& msg : history){
+        reg.request_send(
+            fd,
+            command_codec::cmd_response{
+                "history: id=" + std::to_string(msg.id)
+                + " at=" + msg.created_at
+                + " from=" + msg.sender_user_id
+                + " text=" + msg.body
+            }
+        );
+    }
+
+    logger::log_info(
+        std::string(user_id)
+        + " request history room=" + std::to_string(room_id)
+        + " limit=" + std::to_string(limit)
+    );
 }

@@ -354,6 +354,15 @@ void chat_io_worker::execute(const std::string& line){
         return;
     }
 
+    if(parsed.cmd == "/history"){
+        if(parsed.args.size() != 2){
+            client_console::print_line("/history <room_id> <limit>");
+            return;
+        }
+        history(parsed.args[0], parsed.args[1]);
+        return;
+    }
+
     if(parsed.cmd == "/help"){
         if(parsed.args.size() != 0){
             client_console::print_line("/help");
@@ -451,6 +460,10 @@ void chat_io_worker::list_room(){
     si.send.append(command_codec::cmd_list_room{});
 }
 
+void chat_io_worker::history(const std::string& room_id, const std::string& limit){
+    si.send.append(command_codec::cmd_history{room_id, limit});
+}
+
 void chat_io_worker::help(){
     std::lock_guard<std::mutex> lock(client_console::output_mutex());
     std::cout << "commands:\n"
@@ -468,6 +481,7 @@ void chat_io_worker::help(){
               << "  /leave_room <room_id>\n"
               << "  /select_room <room_id>\n"
               << "  /list_room\n"
+              << "  /history <room_id> <limit>\n"
               << "  /nick <nickname>\n"
               << "  /help\n"
               << "  <text> (send chat message, room must be selected)\n";

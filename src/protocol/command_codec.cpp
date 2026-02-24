@@ -60,6 +60,7 @@ std::string command_codec::encode(const command& cmd){
         if constexpr (std::is_same_v<T, cmd_invite_room>) return "invite_room\r" + c.room_id + "\r" + c.friend_user_id + "\n";
         if constexpr (std::is_same_v<T, cmd_leave_room>) return "leave_room\r" + c.room_id + "\n";
         if constexpr (std::is_same_v<T, cmd_list_room>) return "list_room\n";
+        if constexpr (std::is_same_v<T, cmd_history>) return "history\r" + c.room_id + "\r" + c.limit + "\n";
     }, cmd);    
 }
 
@@ -182,6 +183,13 @@ std::expected <command_codec::command, error_code> command_codec::decode(std::st
             return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
         }
         return cmd_list_room{};
+    }
+
+    if(info.cmd == "history"){
+        if(info.args.size() != 2){
+            return std::unexpected(error_code::from_decode(decode_error::unexpected_argument));
+        }
+        return cmd_history{std::string(info.args[0]), std::string(info.args[1])};
     }
 
     return std::unexpected(error_code::from_decode(decode_error::invalid_command));

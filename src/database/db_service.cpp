@@ -462,3 +462,54 @@ std::expected<std::vector<db_service::room_info>, error_code> db_service::list_r
         return std::unexpected(db_connector::map_exception(ex));
     }
 }
+
+std::expected<std::optional<std::vector<db_service::message_info>>, error_code> db_service::list_room_messages(
+    std::string_view user_id,
+    std::int64_t room_id,
+    std::int32_t limit
+) noexcept{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    try{
+        pqxx::read_transaction tx(connector.connection());
+        auto member_rows = tx.exec(
+            "SELECT 1 "
+            "FROM chat.room_members "
+            "WHERE room_id = $1 AND user_id = $2 "
+            "LIMIT 1",
+            pqxx::params{room_id, user_id}
+        );
+        if(member_rows.empty()){
+            tx.commit();
+            return std::optional<std::vector<message_info>>{};
+        }
+
+        auto rows = tx.exec(
+            "SELECT id, sender_user_id, body, created_at::TEXT "
+            "FROM ("
+            "  SELECT id, sender_user_id, body, created_at "
+            "  FROM chat.messages "
+            "  WHERE room_id = $1 "
+            "  ORDER BY created_at DESC, id DESC "
+            "  LIMIT $2"
+            ") h "
+            "ORDER BY id ASC",
+            pqxx::params{room_id, limit}
+        );
+        tx.commit();
+
+        std::vector<message_info> out;
+        out.reserve(rows.size());
+        for(const auto& row : rows){
+            message_info info{};
+            info.id = row[0].as<std::int64_t>();
+            info.sender_user_id = row[1].c_str();
+            info.body = row[2].c_str();
+            info.created_at = row[3].c_str();
+            out.push_back(std::move(info));
+        }
+        return std::optional<std::vector<message_info>>{std::move(out)};
+    } catch(const std::exception& ex){
+        return std::unexpected(db_connector::map_exception(ex));
+    }
+}

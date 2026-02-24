@@ -12,6 +12,13 @@ class db_connector;
 
 class db_service{
 public:
+    struct message_info{
+        std::int64_t id{};
+        std::string sender_user_id;
+        std::string body;
+        std::string created_at;
+    };
+
     struct room_info{
         std::int64_t id{};
         std::string name;
@@ -93,5 +100,10 @@ public:
     ) noexcept;
     std::expected<std::vector<room_info>, error_code> list_rooms(
         std::string_view user_id
+    ) noexcept;
+    std::expected<std::optional<std::vector<message_info>>, error_code> list_room_messages(
+        std::string_view user_id,
+        std::int64_t room_id,
+        std::int32_t limit
     ) noexcept;
 };

@@ -50,6 +50,7 @@ class chat_io_worker{
     void leave_room(const std::string& room_id);
     void select_room(const std::string& room_id);
     void list_room();
+    void history(const std::string& room_id, const std::string& limit);
     void help();
 public:
     chat_io_worker(socket_info& si, unique_fd& server_fd, chat_executor& executor, std::atomic_bool& logged_in);
