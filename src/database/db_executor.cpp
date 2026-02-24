@@ -392,13 +392,7 @@ void db_executor::execute_command(
         return;
     }
 
-    reg.request_send(
-        fd, command_codec::cmd_response{"friends: " + std::to_string(list_exp->size())}
-    );
-    for(const std::string& friend_id : *list_exp){
-        reg.request_send(fd, command_codec::cmd_response{"friend: " + friend_id});
-    }
-
+    reg.request_send_friend_list(fd, *list_exp);
     logger::log_info(std::string(user_id) + " request list_friend");
 }
 

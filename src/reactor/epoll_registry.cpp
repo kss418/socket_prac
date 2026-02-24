@@ -209,6 +209,14 @@ void epoll_registry::request_set_joined_rooms_for_user(
     request_wakeup();
 }
 
+void epoll_registry::request_send_friend_list(int fd, std::vector<std::string> friend_ids){
+    {
+        std::lock_guard<std::mutex> lock(cmd_mtx);
+        cmd_q.emplace(send_friend_list_command{fd, std::move(friend_ids)});
+    }
+    request_wakeup();
+}
+
 void epoll_registry::request_room_broadcast(
     int sender_fd,
     std::int64_t room_id,
@@ -314,6 +322,28 @@ void epoll_registry::handle_command(set_joined_rooms_for_user_command&& cmd){
             "joined rooms indexed: " + std::to_string(it->second.joined_room_ids.size()),
             it->second
         );
+    }
+}
+
+void epoll_registry::handle_command(send_friend_list_command&& cmd){
+    auto it = infos.find(cmd.fd);
+    if(it == infos.end()) return;
+
+    auto header_exp = append_send(
+        it->second,
+        command_codec::cmd_response{"friends: " + std::to_string(cmd.friend_ids.size())}
+    );
+    if(!header_exp) return;
+
+    for(const auto& friend_id : cmd.friend_ids){
+        const bool is_online = user_online_fds.contains(friend_id);
+        auto send_exp = append_send(
+            it->second,
+            command_codec::cmd_response{
+                "friend: " + friend_id + " (" + (is_online ? "online" : "offline") + ")"
+            }
+        );
+        if(!send_exp) continue;
     }
 }
 

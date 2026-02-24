@@ -54,6 +54,11 @@ class epoll_registry : public epoll_wakeup{
         std::vector<std::int64_t> room_ids;
     };
 
+    struct send_friend_list_command{
+        int fd;
+        std::vector<std::string> friend_ids;
+    };
+
     struct room_broadcast_command{
         int sender_fd;
         std::int64_t room_id;
@@ -69,6 +74,7 @@ class epoll_registry : public epoll_wakeup{
         set_user_id_command,
         set_joined_rooms_command,
         set_joined_rooms_for_user_command,
+        send_friend_list_command,
         room_broadcast_command
     >;
 
@@ -93,6 +99,7 @@ class epoll_registry : public epoll_wakeup{
     void handle_command(set_user_id_command&& cmd);
     void handle_command(set_joined_rooms_command&& cmd);
     void handle_command(set_joined_rooms_for_user_command&& cmd);
+    void handle_command(send_friend_list_command&& cmd);
     void handle_command(room_broadcast_command&& cmd);
     void remove_fd_from_room_index(socket_info& si);
     void remove_fd_from_user_index(socket_info& si);
@@ -121,6 +128,7 @@ public:
     void request_set_joined_rooms(int fd, std::vector<std::int64_t> room_ids);
     void request_set_joined_rooms(socket_info& si, std::vector<std::int64_t> room_ids);
     void request_set_joined_rooms_for_user(std::string user_id, std::vector<std::int64_t> room_ids);
+    void request_send_friend_list(int fd, std::vector<std::string> friend_ids);
     void request_room_broadcast(int sender_fd, std::int64_t room_id, command_codec::command cmd);
     void request_room_broadcast(socket_info& si, std::int64_t room_id, command_codec::command cmd);
 

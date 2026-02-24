@@ -11,5 +11,3 @@ certs/*.ext
 log/
 test_log/
 .env
-client
-server
