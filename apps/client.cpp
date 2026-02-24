@@ -1,6 +1,8 @@
 #include "client/chat_client.hpp"
 #include "core/logger.hpp"
 #include "core/path_util.hpp"
+#include "client/console_output.hpp"
+
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -9,7 +11,6 @@ int main(int argc, char** argv){
 #if defined(SIGPIPE)
     std::signal(SIGPIPE, SIG_IGN);
 #endif
-
     std::string ip = "127.0.0.1";
     std::string port = "8080";
     std::filesystem::path ca_path = path_util::resolve_file_in_default_roots(
@@ -27,6 +28,7 @@ int main(int argc, char** argv){
     auto client_exp = chat_client::create(ip.c_str(), port.c_str(), ca_path.string());
     if(!client_exp) return 1;
 
+    client_console::print_line("connected to" + ip + ":" + port);
     auto run_exp = client_exp->run();
     if(!run_exp) return 1;
 
